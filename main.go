@@ -4,9 +4,15 @@ import (
 	"adapter-project/routes"
 	"log"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 	// Load environment variables
 	apiToken := os.Getenv("API_TOKEN")
 	apiSecret := os.Getenv("API_SECRET")
