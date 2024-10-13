@@ -1,20 +1,18 @@
-package main
+package api
 
 import (
-	"adapter-project/routes"
-	"log"
-	"os"
+	"GoLang_adapter/services"
+	"fmt"
 )
 
 func main() {
-	// Load environment variables
-	apiToken := os.Getenv("API_TOKEN")
-	apiSecret := os.Getenv("API_SECRET")
+	authService := services.NewAuthService("https://www.definedgesecurities.com/")
 
-	if apiToken == "" || apiSecret == "" {
-		log.Fatal("API_TOKEN or API_SECRET not set in environment")
+	err := authService.Login("https://signin.definedgesecurities.com/auth/realms/debroking/dsbpkc/login/{{api_token}}",
+		"api_secret")
+	if err != nil {
+		fmt.Println("Login failed:", err)
+	} else {
+		fmt.Println("Login successful")
 	}
-
-	// Call route handler to log in
-	routes.HandleLogin(apiToken, apiSecret)
 }
