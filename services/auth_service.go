@@ -5,6 +5,16 @@ import (
     "adapter-project/models"
 )
 
-func LoginService(apiToken, apiSecret string) (*models.LoginResponse, error) {
-    return api.Login(apiToken, apiSecret)
+type AuthService struct {
+    api *api.AuthAPI
+}
+
+func NewAuthService(baseURL string) *AuthService {
+    return &AuthService{
+        api: api.NewAuthAPI(baseURL),
+    }
+}
+
+func (s *AuthService) Login(apiToken, apiSecret string) error {
+    return s.api.Login(apiToken, apiSecret)
 }
