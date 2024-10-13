@@ -1,27 +1,51 @@
 package api
 
 import (
-    "bytes"
-    "encoding/json"
-    "net/http"
-    "adapter-project/models"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
 )
 
-func Login(apiToken, apiSecret string) (*models.LoginResponse, error) {
-    payload := map[string]string{
-        "api_token":  apiToken,
-        "api_secret": apiSecret,
-    }
-    jsonPayload, _ := json.Marshal(payload)
-    resp, err := http.Post("https://api.definedge.com/auth/login", "application/json", bytes.NewBuffer(jsonPayload))
-    
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-    
-    var loginResp models.LoginResponse
-    json.NewDecoder(resp.Body).Decode(&loginResp)
-    
-    return &loginResp, nil
+type AuthAPI struct {
+	BaseURL string
+	Client  *http.Client
+}
+
+func NewAuthAPI(baseURL string) *AuthAPI {
+	return &AuthAPI{
+		BaseURL: "https://integrate.definedgesecurities.com/dart/v1",
+		Client:  &http.Client{},
+	}
+}
+
+func (a *AuthAPI) Login(apiToken, apiSecret string) error {
+	payload := map[string]string{
+		"api_token":  apiToken,
+		"api_secret": apiSecret,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", a.BaseURL+"/login", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("login failed with status: %d", resp.StatusCode)
+	}
+
+	return nil
 }
