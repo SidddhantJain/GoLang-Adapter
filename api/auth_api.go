@@ -19,33 +19,39 @@ func NewAuthAPI(baseURL string) *AuthAPI {
 	}
 }
 
-func (a *AuthAPI) Login(apiToken, apiSecret string) error {
-	payload := map[string]string{
-		"api_token":  apiToken,
-		"api_secret": apiSecret,
-	}
 
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
+func (a *AuthAPI) Login(apiToken, apiSecret string) (*models.LoginResponse, error) {
+    payload := map[string]string{
+        "api_token":  apiToken,
+        "api_secret": apiSecret,
+    }
 
-	req, err := http.NewRequest("POST", a.BaseURL+"/login", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return err
-	}
+    jsonData, err := json.Marshal(payload)
+    if err != nil {
+        return nil, err
+    }
 
-	req.Header.Set("Content-Type", "application/json")
+    req, err := http.NewRequest("POST", a.BaseURL+"/login", bytes.NewBuffer(jsonData))
+    if err != nil {
+        return nil, err
+    }
 
-	resp, err := a.Client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+    req.Header.Set("Content-Type", "application/json")
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("login failed with status: %d", resp.StatusCode)
-	}
+    resp, err := a.Client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
 
-	return nil
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("login failed with status: %d", resp.StatusCode)
+    }
+
+    var loginResponse models.LoginResponse
+    if err := json.NewDecoder(resp.Body).Decode(&loginResponse); err != nil {
+        return nil, err
+    }
+
+    return &loginResponse, nil
 }
