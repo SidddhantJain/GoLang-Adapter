@@ -1,7 +1,7 @@
 package config
 
 const (
-    BaseURL      = "https://api.definedge.com"
-    AuthEndpoint = "/auth/login"
-    OrderEndpoint = "/placeorder"
+    BaseURL      = "https://integrate.definedgesecurities.com/dart/v1"
+    LoginURL     = "/auth/login"
+    OrderURL     = "/placeorder"
 )
