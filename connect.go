@@ -72,3 +72,60 @@ func (c *ConnectToIntegrate) Login(apiToken, apiSecret string) error {
 
 	return nil
 }
+
+
+/* 
+package api
+
+import (
+    "encoding/json"
+    "errors"
+    "net/http"
+    "adapter-project/models"
+)
+
+type ConnectToIntegrate struct {
+    client        *http.Client
+    loginURL      string
+    baseURL       string
+    apiSessionKey string
+}
+
+func NewConnectToIntegrate(loginURL, baseURL string) *ConnectToIntegrate {
+    return &ConnectToIntegrate{
+        client:   &http.Client{},
+        loginURL: loginURL,
+        baseURL:  baseURL,
+    }
+}
+
+func (c *ConnectToIntegrate) Login(apiToken, apiSecret string) (*models.LoginResponse, error) {
+    payload := map[string]string{
+        "api_token":  apiToken,
+        "api_secret": apiSecret,
+    }
+
+    jsonPayload, err := json.Marshal(payload)
+    if err != nil {
+        return nil, err
+    }
+
+    resp, err := c.client.Post(c.loginURL, "application/json", bytes.NewBuffer(jsonPayload))
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return nil, errors.New("login failed")
+    }
+
+    var loginResponse models.LoginResponse
+    if err := json.NewDecoder(resp.Body).Decode(&loginResponse); err != nil {
+        return nil, err
+    }
+
+    c.apiSessionKey = loginResponse.APISessionKey
+    return &loginResponse, nil
+}
+*/
