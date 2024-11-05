@@ -174,7 +174,7 @@ func (c *LocalConnect) login(apiToken, apiSecret string, totp *string) error {
 		"otp_token": otpToken,
 		"otp":       otp,
 		"ac":        acHex,
-	})
+	}, nil, nil, nil)
 	if err != nil {
 		return err
 	}

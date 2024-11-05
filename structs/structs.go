@@ -25,4 +25,5 @@ type ConnectToIntegrate struct {
 	SessionExpiredCallback func(err error)
 	GTTConditionTypes      []string
 	TimeframeTypes         []string
+	// SuserToken             string
 }
