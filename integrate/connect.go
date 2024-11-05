@@ -1,38 +1,27 @@
 package integrate
 
 import (
-    "archive/zip"
-    "bytes"
-    "crypto/sha256"
-    "encoding/csv"
-    "encoding/hex"
-    "fmt"
-    "io"
-    "io/ioutil"
-    "log"
-    "net/http"
-    "os"
-    "path/filepath"
-    "strconv"
-    "time"
+	"adapter-project/structs"
+	"archive/zip"
+	"bytes"
+	"crypto/sha256"
+	"encoding/csv"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"time"
 )
 
-type ConnectToIntegrate struct {
-    LoginURL             string
-    BaseURL              string
-    Timeout              time.Duration
-    Logging              bool
-    Proxies              map[string]string
-    Uid                  string
-    Actid                string
-    APISessionKey        string
-    WSSessionKey         string
-    HTTPClient           *http.Client
-    ExchangeTypes        []string
-    OrderTypes           []string
-    PriceTypes           []string
-    ProductTypes         []string
-    SubscriptionTypes    []string
+type LocalConnect struct {
+	*structs.ConnectToIntegrate
 }
 
 // Set up a logger
@@ -55,10 +44,10 @@ const (
 
 // Constants for price types
 const (
-	PriceTypeMarket  = "MARKET"
-	PriceTypeLimit   = "LIMIT"
-	PriceTypeSlMkt   = "SL-MARKET"
-	PriceTypeSlLmt   = "SL-LIMIT"
+	PriceTypeMarket = "MARKET"
+	PriceTypeLimit  = "LIMIT"
+	PriceTypeSlMkt  = "SL-MARKET"
+	PriceTypeSlLmt  = "SL-LIMIT"
 )
 
 // Constants for product types
@@ -84,9 +73,9 @@ const (
 
 // Constants for order statuses
 const (
-	OrderStatusNew      = "NEW"
-	OrderStatusOpen     = "OPEN"
-	OrderStatusComplete = "COMPLETE"
+	OrderStatusNew       = "NEW"
+	OrderStatusOpen      = "OPEN"
+	OrderStatusComplete  = "COMPLETE"
 	OrderStatusCancelled = "CANCELED"
 	OrderStatusRejected  = "REJECTED"
 	OrderStatusReplaced  = "REPLACED"
@@ -105,8 +94,7 @@ const (
 	TimeframeTypeTick = "tick"
 )
 
-
-func NewConnectToIntegrate(loginURL, baseURL string, timeout int, logging bool, proxies map[string]string) *ConnectToIntegrate {
+func NewConnectToIntegrate(loginURL, baseURL string, timeout int, logging bool, proxies map[string]string) *structs.ConnectToIntegrate {
 	// Set default URLs if not provided
 	if loginURL == "" {
 		loginURL = "https://signin.definedgesecurities.com/auth/realms/debroking/dsbpkc/"
@@ -121,39 +109,40 @@ func NewConnectToIntegrate(loginURL, baseURL string, timeout int, logging bool, 
 	}
 
 	// Initialize and configure the ConnectToIntegrate instance
-	connect := &ConnectToIntegrate{
-		Logging:                logging,
-		Timeout:                time.Duration(timeout) * time.Second,
-		Proxies:                proxies,
-		ReqSess:                &http.Client{Timeout: time.Duration(timeout) * time.Second},
-		UID:                    "",
-		ActID:                  "",
-		APISessionKey:          "",
-		WSSessionKey:           "",
-		LoginURL:               loginURL,
-		BaseURL:                baseURL,
-		SessionExpiredCallback: nil, // Set a callback function if needed
+	connect := &structs.ConnectToIntegrate{
+		Logging:       logging,
+		Timeout:       time.Duration(timeout) * time.Second,
+		Proxies:       proxies,
+		ReqSess:       &http.Client{Timeout: time.Duration(timeout) * time.Second},
+		UID:           "",
+		ActID:         "",
+		APISessionKey: "",
+		WSSessionKey:  "",
+		LoginURL:      loginURL,
+		BaseURL:       baseURL,
+		SessionExpiredCallback: func(err error) {
+			log.Println("Session expired:", err)
+		},
 
 		// Initialize exchange, order, price, product, and subscription types
-		ExchangeTypes:       []string{"NSE", "BSE", "NFO", "CDS", "MCX"},
-		OrderTypes:          []string{"BUY", "SELL"},
-		PriceTypes:          []string{"MARKET", "LIMIT", "SL-MARKET", "SL-LIMIT"},
-		ProductTypes:        []string{"CNC", "INTRADAY", "NORMAL"},
-		SubscriptionTypes:   []string{"TICK", "ORDER", "DEPTH"},
-		GTTConditionTypes:   []string{"LTP_BELOW", "LTP_ABOVE"},
-		TimeframeTypes:      []string{"minute", "day", "tick"},
+		ExchangeTypes:     []string{"NSE", "BSE", "NFO", "CDS", "MCX"},
+		OrderTypes:        []string{"BUY", "SELL"},
+		PriceTypes:        []string{"MARKET", "LIMIT", "SL-MARKET", "SL-LIMIT"},
+		ProductTypes:      []string{"CNC", "INTRADAY", "NORMAL"},
+		SubscriptionTypes: []string{"TICK", "ORDER", "DEPTH"},
+		GTTConditionTypes: []string{"LTP_BELOW", "LTP_ABOVE"},
+		TimeframeTypes:    []string{"minute", "day", "tick"},
 	}
-  }
+	return connect
+}
 
-
-//Login 
-func (c *ConnectToIntegrate) login(apiToken, apiSecret string, totp *string) error {
+// Login
+func (c *LocalConnect) login(apiToken, apiSecret string, totp *string) error {
 	if apiToken == "" || apiSecret == "" {
 		return errors.New("invalid api_token or api_secret")
 	}
 
-	// Get OTP token
-	r, err := c.sendRequest(c.loginURL, "login/"+apiToken, "GET", map[string]string{"api_secret": apiSecret}, nil)
+	r, err := c.sendRequest(c.LoginURL, "login/"+apiToken, "GET", nil, nil, nil, nil, map[string]string{"api_secret": apiSecret})
 	if err != nil {
 		return err
 	}
@@ -181,7 +170,7 @@ func (c *ConnectToIntegrate) login(apiToken, apiSecret string, totp *string) err
 	acHex := hex.EncodeToString(ac.Sum(nil))
 
 	// Get session keys
-	r, err = c.sendRequest(c.loginURL, "token", "POST", nil, map[string]interface{}{
+	r, err = c.sendRequest(c.LoginURL, "token", "POST", nil, map[string]interface{}{
 		"otp_token": otpToken,
 		"otp":       otp,
 		"ac":        acHex,
@@ -208,28 +197,26 @@ func (c *ConnectToIntegrate) login(apiToken, apiSecret string, totp *string) err
 	return nil
 }
 
-
-
 // getSessionKeys retrieves stored session keys
 // Returns the session keys as strings.
-func (c *ConnectToIntegrate) getSessionKeys() (string, string, string, string) {
-	return c.uid, c.actid, c.apiSessionKey, c.wsSessionKey
+func (c *LocalConnect) getSessionKeys() (string, string, string, string) {
+	return c.UID, c.ActID, c.APISessionKey, c.WSSessionKey
 }
 
 // setSessionKeys stores session keys
 //
 // Parameters:
-//   uid: Your Definedge Securities login UCC id
-//   actid: Your Definedge Securities login account id
-//   apiSessionKey: Your Definedge Securities API session key
-//   wsSessionKey: Your Definedge Securities WebSocket session key
-func (c *ConnectToIntegrate) setSessionKeys(uid, actid, apiSessionKey, wsSessionKey string) {
-	c.uid = uid
-	c.actid = actid
-	c.apiSessionKey = apiSessionKey
-	c.wsSessionKey = wsSessionKey
+//
+//	uid: Your Definedge Securities login UCC id
+//	actid: Your Definedge Securities login account id
+//	apiSessionKey: Your Definedge Securities API session key
+//	wsSessionKey: Your Definedge Securities WebSocket session key
+func (c *LocalConnect) setSessionKeys(uid, actid, apiSessionKey, wsSessionKey string) {
+	c.UID = uid
+	c.ActID = actid
+	c.APISessionKey = apiSessionKey
+	c.WSSessionKey = wsSessionKey
 }
-
 
 // SymbolsGenerator returns a channel that yields symbols
 func SymbolsGenerator() <-chan Symbol {
@@ -282,7 +269,7 @@ func SymbolsGenerator() <-chan Symbol {
 				TickSize:       record[6],
 				LotSize:        record[7],
 				OptionType:     record[8],
-				Strike:         fmt.Sprintf("%d", int(int(record[9])/ (int(record[11]) * 10 ^ int(record[10])))), // Convert Strike to int and format
+				Strike:         fmt.Sprintf("%d", int(int(record[9])/(int(record[11])*10^int(record[10])))), // Convert Strike to int and format
 				ISIN:           record[12],
 				PriceMult:      record[13],
 			}
@@ -333,9 +320,8 @@ func downloadSymbols() error {
 	return fmt.Errorf("allmaster.csv not found in zip")
 }
 
-
-//function to send request
-func (s *YourStruct) sendRequest(
+// function to send request
+func (s *LocalConnect) sendRequest(
 	routePrefix string,
 	route string,
 	method string,
