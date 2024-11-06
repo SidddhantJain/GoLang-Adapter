@@ -1,7 +1,7 @@
-package api
+package main
 
 import (
-	"GoLang_adapter/services"
+	"adapter-project/services"
 	"fmt"
 )
 

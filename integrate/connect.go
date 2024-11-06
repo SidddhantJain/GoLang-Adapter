@@ -180,7 +180,7 @@ func (c *LocalConnect) login(apiToken, apiSecret string, totp *string) error {
 	}
 
 	// Set session keys
-	c.setSessionKeys(r["uid"].(string), r["actid"].(string), r["api_session_key"].(string))
+	c.setSessionKeys(r["uid"].(string), r["actid"].(string), r["api_session_key"].(string), r["susertoken"].(string))
 
 	// Attempt to remove symbols file
 	symbolsFilename := filepath.Join(filepath.Dir(os.Args[0]), "allmaster.csv")
@@ -190,7 +190,7 @@ func (c *LocalConnect) login(apiToken, apiSecret string, totp *string) error {
 
 	// Call next on the symbols channel
 	select {
-	case c.symbols <- struct{}{}:
+	case c.Symbols <- struct{}{}:
 	default:
 	}
 
