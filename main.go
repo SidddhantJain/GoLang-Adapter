@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	authService := services.NewAuthService("https://www.definedgesecurities.com/")
+	authService := services.NewAuthService("https://api.definedgebroking.com/dart/v1/")  //https://www.definedgesecurities.com/
 
 	err := authService.Login("https://signin.definedgesecurities.com/auth/realms/debroking/dsbpkc/login/{{api_token}}",
 		"api_secret")
