@@ -10,15 +10,17 @@ import (
 )
 
 type IntegrateData struct {
-	c2i     *structs.ConnectToIntegrate
+	c2i     *LocalConnect
 	logging bool
 }
 
 // NewIntegrateData initializes a new instance of IntegrateData
 func NewIntegrateData(c2i *structs.ConnectToIntegrate, logging bool) *IntegrateData {
 	return &IntegrateData{
-		c2i:     c2i,
 		logging: logging,
+		c2i: &LocalConnect{
+			ConnectToIntegrate: c2i,
+		},
 	}
 }
 
@@ -90,7 +92,9 @@ func (ic *IntegrateData) HistoricalData(exchange, tradingSymbol, timeframe strin
 }
 
 // Quotes retrieves the quote for a security.
-func (ic *IntegrateData) Quotes(exchange, tradingSymbol string) (map[string]interface{}, error) {
+func (ic *IntegrateData) Quotes(
+	exchange string,
+	tradingSymbol string) (map[string]interface{}, error) {
 	if !ic.isValidExchange(exchange) {
 		return nil, errors.New("invalid exchange type")
 	}
@@ -100,12 +104,23 @@ func (ic *IntegrateData) Quotes(exchange, tradingSymbol string) (map[string]inte
 		return nil, err
 	}
 
-	route := fmt.Sprintf("%s/quotes/%s/%s", ic.c2i.BaseURL, exchange, token)
-	return ic.c2i.sendRequest(route, "GET")
+	route := fmt.Sprintf("quotes/%s/%s", exchange, token)
+	return ic.c2i.sendRequest(
+		ic.c2i.BaseURL,
+		route,
+		"GET",
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
 }
 
 // SecurityInformation retrieves information about a security.
-func (ic *IntegrateData) SecurityInformation(exchange, tradingSymbol string) (map[string]interface{}, error) {
+func (ic *IntegrateData) SecurityInformation(
+	exchange string,
+	tradingSymbol string) (map[string]interface{}, error) {
 	if !ic.isValidExchange(exchange) {
 		return nil, errors.New("invalid exchange type")
 	}
@@ -115,8 +130,17 @@ func (ic *IntegrateData) SecurityInformation(exchange, tradingSymbol string) (ma
 		return nil, err
 	}
 
-	route := fmt.Sprintf("%s/securityinfo/%s/%s", ic.c2i.BaseURL, exchange, token)
-	return ic.c2i.sendRequest(route, "GET")
+	route := fmt.Sprintf("securityinfo/%s/%s", exchange, token)
+	return ic.c2i.sendRequest(
+		ic.c2i.BaseURL,
+		route,
+		"GET",
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
 }
 
 // Utility methods (helpers)
