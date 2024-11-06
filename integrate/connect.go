@@ -94,7 +94,7 @@ const (
 	TimeframeTypeTick = "tick"
 )
 
-func NewConnectToIntegrate(loginURL, baseURL string, timeout int, logging bool, proxies map[string]string) *structs.ConnectToIntegrate {
+func NewConnectToIntegrate(loginURL, baseURL string, timeout int, logging bool, proxies map[string]string) *LocalConnect {
 	// Set default URLs if not provided
 	if loginURL == "" {
 		loginURL = "https://signin.definedgesecurities.com/auth/realms/debroking/dsbpkc/"
@@ -133,7 +133,7 @@ func NewConnectToIntegrate(loginURL, baseURL string, timeout int, logging bool, 
 		GTTConditionTypes: []string{"LTP_BELOW", "LTP_ABOVE"},
 		TimeframeTypes:    []string{"minute", "day", "tick"},
 	}
-	return connect
+	return &LocalConnect{connect}
 }
 
 // Login
