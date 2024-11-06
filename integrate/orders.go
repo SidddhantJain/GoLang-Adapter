@@ -12,11 +12,10 @@ type IntegrateOrders struct {
 }
 
 // NewIntegrateOrders initializes a new instance of IntegrateOrders
-func NewIntegrateOrders(connectToIntegrate *structs.ConnectToIntegrate, logging bool) *IntegrateOrders {
+func NewIntegrateOrders(connectToIntegrate *LocalConnect, logging bool) *IntegrateOrders {
 	return &IntegrateOrders{
 		logging: logging,
-		c2i: &LocalConnect{
-			ConnectToIntegrate: connectToIntegrate},
+		c2i:     connectToIntegrate,
 	}
 }
 
@@ -111,7 +110,7 @@ func (io *IntegrateOrders) PlaceOrder(
 	}
 
 	// Send request
-	return io.c2i.sendRequest(io.c2i.ConnectToIntegrate.BaseURL, "placeorder", "POST", nil, jsonParams, nil, nil, nil)
+	return io.c2i.sendRequest(io.c2i.BaseURL, "placeorder", "POST", nil, jsonParams, nil, nil, nil)
 }
 
 // Additional helper functions to validate fields

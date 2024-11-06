@@ -1,7 +1,6 @@
 package integrate
 
 import (
-	"adapter-project/structs"
 	"errors"
 	"fmt"
 	"strconv"
@@ -15,12 +14,10 @@ type IntegrateData struct {
 }
 
 // NewIntegrateData initializes a new instance of IntegrateData
-func NewIntegrateData(c2i *structs.ConnectToIntegrate, logging bool) *IntegrateData {
+func NewIntegrateData(c2i *LocalConnect, logging bool) *IntegrateData {
 	return &IntegrateData{
 		logging: logging,
-		c2i: &LocalConnect{
-			ConnectToIntegrate: c2i,
-		},
+		c2i:     c2i,
 	}
 }
 

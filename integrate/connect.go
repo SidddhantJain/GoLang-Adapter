@@ -11,12 +11,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -94,7 +96,12 @@ const (
 	TimeframeTypeTick = "tick"
 )
 
-func NewConnectToIntegrate(loginURL, baseURL string, timeout int, logging bool, proxies map[string]string) *LocalConnect {
+func NewConnectToIntegrate(
+	loginURL string,
+	baseURL string,
+	timeout int,
+	logging bool,
+	proxies map[string]string) *LocalConnect {
 	// Set default URLs if not provided
 	if loginURL == "" {
 		loginURL = "https://signin.definedgesecurities.com/auth/realms/debroking/dsbpkc/"
@@ -110,39 +117,52 @@ func NewConnectToIntegrate(loginURL, baseURL string, timeout int, logging bool, 
 
 	// Initialize and configure the ConnectToIntegrate instance
 	connect := &structs.ConnectToIntegrate{
-		Logging:       logging,
-		Timeout:       time.Duration(timeout) * time.Second,
-		Proxies:       proxies,
-		ReqSess:       &http.Client{Timeout: time.Duration(timeout) * time.Second},
-		UID:           "",
-		ActID:         "",
-		APISessionKey: "",
-		WSSessionKey:  "",
-		LoginURL:      loginURL,
-		BaseURL:       baseURL,
-		SessionExpiredCallback: func(err error) {
-			log.Println("Session expired:", err)
-		},
+		Logging:                logging,
+		Timeout:                time.Duration(timeout) * time.Second,
+		Proxies:                proxies,
+		ReqSess:                &http.Client{Timeout: time.Duration(timeout) * time.Second},
+		UID:                    "",
+		ActID:                  "",
+		APISessionKey:          "",
+		WSSessionKey:           "",
+		LoginURL:               loginURL,
+		BaseURL:                baseURL,
+		SessionExpiredCallback: nil,
 
 		// Initialize exchange, order, price, product, and subscription types
-		ExchangeTypes:     []string{"NSE", "BSE", "NFO", "CDS", "MCX"},
-		OrderTypes:        []string{"BUY", "SELL"},
-		PriceTypes:        []string{"MARKET", "LIMIT", "SL-MARKET", "SL-LIMIT"},
-		ProductTypes:      []string{"CNC", "INTRADAY", "NORMAL"},
-		SubscriptionTypes: []string{"TICK", "ORDER", "DEPTH"},
-		GTTConditionTypes: []string{"LTP_BELOW", "LTP_ABOVE"},
-		TimeframeTypes:    []string{"minute", "day", "tick"},
+		ExchangeTypes:     []string{ExchangeTypeNSE, ExchangeTypeBSE, ExchangeTypeNFO, ExchangeTypeCDS, ExchangeTypeMCX},
+		OrderTypes:        []string{OrderTypeBuy, OrderTypeSell},
+		PriceTypes:        []string{PriceTypeMarket, PriceTypeLimit, PriceTypeSlMkt, PriceTypeSlLmt},
+		ProductTypes:      []string{ProductTypeCNC, ProductTypeIntraday, ProductTypeNormal},
+		SubscriptionTypes: []string{SubscriptionTypeTick, SubscriptionTypeOrder, SubscriptionTypeDepth},
+		GTTConditionTypes: []string{GttConditionLtpBelow, GttConditionLtpAbove},
+		TimeframeTypes:    []string{TimeframeTypeMin, TimeframeTypeDay, TimeframeTypeTick},
 	}
 	return &LocalConnect{connect}
 }
 
 // Login
-func (c *LocalConnect) login(apiToken, apiSecret string, totp *string) error {
+func (c *LocalConnect) login(
+	apiToken string,
+	apiSecret string,
+	totp *string) error {
 	if apiToken == "" || apiSecret == "" {
 		return errors.New("invalid api_token or api_secret")
 	}
-
-	r, err := c.sendRequest(c.LoginURL, "login/"+apiToken, "GET", nil, nil, nil, nil, map[string]string{"api_secret": apiSecret})
+	extra_headers := map[string]string{
+		"api_secret": apiSecret,
+	}
+	route := fmt.Sprintf("login/%s", apiToken)
+	r, err := c.sendRequest(
+		c.LoginURL,
+		route,
+		"GET",
+		nil,
+		nil,
+		nil,
+		nil,
+		extra_headers,
+	)
 	if err != nil {
 		return err
 	}
@@ -183,14 +203,24 @@ func (c *LocalConnect) login(apiToken, apiSecret string, totp *string) error {
 	c.setSessionKeys(r["uid"].(string), r["actid"].(string), r["api_session_key"].(string), r["susertoken"].(string))
 
 	// Attempt to remove symbols file
+	// Replacement for this python code
+	// try:
+	//                 # Get symbols
+	//                 symbols_filename: str = abspath(
+	//                     join(dirname(__file__), "allmaster.csv")
+	//                 )
+	//                 remove(symbols_filename)
+	//             except FileNotFoundError:
+	//                 pass
+	//             next(self.symbols)
 	symbolsFilename := filepath.Join(filepath.Dir(os.Args[0]), "allmaster.csv")
 	if err := os.Remove(symbolsFilename); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	c.Symbols = make(chan map[string]interface{}, 1)
 
-	// Call next on the symbols channel
 	select {
-	case c.Symbols <- struct{}{}:
+	case c.Symbols <- map[string]interface{}{}:
 	default:
 	}
 
@@ -211,7 +241,10 @@ func (c *LocalConnect) getSessionKeys() (string, string, string, string) {
 //	actid: Your Definedge Securities login account id
 //	apiSessionKey: Your Definedge Securities API session key
 //	wsSessionKey: Your Definedge Securities WebSocket session key
-func (c *LocalConnect) setSessionKeys(uid, actid, apiSessionKey, wsSessionKey string) {
+func (c *LocalConnect) setSessionKeys(uid string,
+	actid string,
+	apiSessionKey string,
+	wsSessionKey string) {
 	c.UID = uid
 	c.ActID = actid
 	c.APISessionKey = apiSessionKey
@@ -219,66 +252,66 @@ func (c *LocalConnect) setSessionKeys(uid, actid, apiSessionKey, wsSessionKey st
 }
 
 // SymbolsGenerator returns a channel that yields symbols
-func SymbolsGenerator() <-chan Symbol {
-	symbolsChannel := make(chan Symbol)
+// func SymbolsGenerator() <-chan Symbol {
+// 	symbolsChannel := make(chan Symbol)
 
-	go func() {
-		defer close(symbolsChannel)
+// 	go func() {
+// 		defer close(symbolsChannel)
 
-		// Path for the symbols file
-		symbolsFilename := filepath.Join("allmaster.csv")
+// 		// Path for the symbols file
+// 		symbolsFilename := filepath.Join("allmaster.csv")
 
-		// Check if the file exists
-		if _, err := os.Stat(symbolsFilename); os.IsNotExist(err) {
-			// Download the master file if not present
-			err := downloadSymbols()
-			if err != nil {
-				fmt.Println("Error downloading symbols:", err)
-				return
-			}
-		}
+// 		// Check if the file exists
+// 		if _, err := os.Stat(symbolsFilename); os.IsNotExist(err) {
+// 			// Download the master file if not present
+// 			err := downloadSymbols()
+// 			if err != nil {
+// 				fmt.Println("Error downloading symbols:", err)
+// 				return
+// 			}
+// 		}
 
-		// Open the symbols file
-		file, err := os.Open(symbolsFilename)
-		if err != nil {
-			fmt.Println("Error opening symbols file:", err)
-			return
-		}
-		defer file.Close()
+// 		// Open the symbols file
+// 		file, err := os.Open(symbolsFilename)
+// 		if err != nil {
+// 			fmt.Println("Error opening symbols file:", err)
+// 			return
+// 		}
+// 		defer file.Close()
 
-		// Read the CSV file
-		reader := csv.NewReader(file)
-		records, err := reader.ReadAll()
-		if err != nil {
-			fmt.Println("Error reading CSV file:", err)
-			return
-		}
+// 		// Read the CSV file
+// 		reader := csv.NewReader(file)
+// 		records, err := reader.ReadAll()
+// 		if err != nil {
+// 			fmt.Println("Error reading CSV file:", err)
+// 			return
+// 		}
 
-		// Create and yield symbols
-		for _, record := range records {
-			if len(record) < 14 { // Ensure there are enough columns
-				continue
-			}
-			symbol := Symbol{
-				Segment:        record[0],
-				Token:          record[1],
-				Symbol:         record[2],
-				TradingSymbol:  record[3],
-				InstrumentType: record[4],
-				Expiry:         record[5],
-				TickSize:       record[6],
-				LotSize:        record[7],
-				OptionType:     record[8],
-				Strike:         fmt.Sprintf("%d", int(int(record[9])/(int(record[11])*10^int(record[10])))), // Convert Strike to int and format
-				ISIN:           record[12],
-				PriceMult:      record[13],
-			}
-			symbolsChannel <- symbol
-		}
-	}()
+// 		// Create and yield symbols
+// 		for _, record := range records {
+// 			if len(record) < 14 { // Ensure there are enough columns
+// 				continue
+// 			}
+// 			symbol := Symbol{
+// 				Segment:        record[0],
+// 				Token:          record[1],
+// 				Symbol:         record[2],
+// 				TradingSymbol:  record[3],
+// 				InstrumentType: record[4],
+// 				Expiry:         record[5],
+// 				TickSize:       record[6],
+// 				LotSize:        record[7],
+// 				OptionType:     record[8],
+// 				Strike:         fmt.Sprintf("%d", int(int(record[9])/(int(record[11])*10^int(record[10])))), // Convert Strike to int and format
+// 				ISIN:           record[12],
+// 				PriceMult:      record[13],
+// 			}
+// 			symbolsChannel <- symbol
+// 		}
+// 	}()
 
-	return symbolsChannel
-}
+// 	return symbolsChannel
+// }
 
 // downloadSymbols downloads the symbols file
 func downloadSymbols() error {
@@ -332,7 +365,14 @@ func (s *LocalConnect) sendRequest(
 	extraHeaders map[string]string,
 ) (map[string]interface{}, error) {
 	// Form URL
-	urlStr := routePrefix + fmt.Sprintf(route, urlParams)
+	if urlParams != nil {
+		for key, value := range urlParams {
+			placeholder := fmt.Sprintf("{%s}", key)
+			route = strings.ReplaceAll(route, placeholder, value)
+		}
+	}
+
+	urlStr := routePrefix + route
 	if queryParams != nil {
 		query := url.Values{}
 		for k, v := range queryParams {
@@ -354,9 +394,13 @@ func (s *LocalConnect) sendRequest(
 			headers[k] = v
 		}
 	}
-	if s.APIKey != "" {
-		headers["Authorization"] = s.APIKey
+	if s.APISessionKey != "" {
+		headers["Authorization"] = s.APISessionKey
 	}
+	if s.Logging {
+		logger.Printf(
+            "Request: %s %s %v %v %v %v %v\n", method, urlStr, queryParams, jsonParams, dataParams, headers, extraHeaders,
+        )
 
 	// Add headers to request
 	for k, v := range headers {
@@ -364,20 +408,20 @@ func (s *LocalConnect) sendRequest(
 	}
 
 	// Set request body based on method
-	if method == http.MethodPost {
+	if method == "POST"  {
 		if jsonParams != nil {
 			jsonData, err := json.Marshal(jsonParams)
 			if err != nil {
 				return nil, err
 			}
-			req.Body = ioutil.NopCloser(bytes.NewBuffer(jsonData))
+			req.Body = io.NopCloser(bytes.NewBuffer(jsonData))
 			req.Header.Set("Content-Type", "application/json")
 		} else if dataParams != nil {
-			formData, err := json.Marshal(dataParams)
-			if err != nil {
-				return nil, err
+			formData := url.Values{}
+			for key, value := range dataParams {
+				formData.Add(key, fmt.Sprintf("%v", value))
 			}
-			req.Body = ioutil.NopCloser(bytes.NewBuffer(formData))
+			req.Body = io.NopCloser(bytes.NewBufferString(formData.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		}
 	}
@@ -399,9 +443,9 @@ func (s *LocalConnect) sendRequest(
 
 	// Log response
 	if s.Logging {
-		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		bodyBytes, _ := io.ReadAll(resp.Body)
 		fmt.Printf("Response: %d %s\n", resp.StatusCode, bodyBytes)
-		resp.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes)) // Reset the body
+		resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes)) // Reset the body
 	}
 
 	// Check Content-Type and handle the response
@@ -445,4 +489,107 @@ func (s *LocalConnect) sendRequest(
 	}
 
 	return data, nil
+}
+
+func (c *LocalConnect) Symbols() (<-chan map[string]string, error) {
+	// Set the symbols file path
+	symbolsFilename := filepath.Join(filepath.Dir(os.Args[0]), "allmaster.csv")
+
+	// Check if the symbols file exists
+	if _, err := os.Stat(symbolsFilename); os.IsNotExist(err) {
+		// Download and unzip the symbols file if not present
+		resp, err := http.Get("https://app.definedgesecurities.com/public/allmaster.zip")
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		// Read the response body into a byte slice
+		zipBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		// Create a zip reader using a bytes.Reader
+		readerAt := bytes.NewReader(zipBytes)
+		zipReader, err := zip.NewReader(readerAt, int64(len(zipBytes)))
+		if err != nil {
+			return nil, err
+		}
+
+		// Locate and extract the CSV file in the zip
+		for _, f := range zipReader.File {
+			if f.Name == "allmaster.csv" {
+				outFile, err := os.Create(symbolsFilename)
+				if err != nil {
+					return nil, err
+				}
+				defer outFile.Close()
+
+				fileInZip, err := f.Open()
+				if err != nil {
+					return nil, err
+				}
+				defer fileInZip.Close()
+
+				_, err = io.Copy(outFile, fileInZip)
+				if err != nil {
+					return nil, err
+				}
+				break
+			}
+		}
+	}
+
+	// Open the symbols file
+	file, err := os.Open(symbolsFilename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// Create a channel to send symbol data
+	ch := make(chan map[string]string)
+
+	// Create a CSV reader
+	reader := csv.NewReader(file)
+	go func() {
+		defer close(ch)
+		for {
+			// Read a record from the CSV
+			record, err := reader.Read()
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				fmt.Println("Error reading CSV:", err)
+				return
+			}
+
+			// Prepare the symbol data as a map
+			val9, _ := strconv.Atoi(record[9])
+			val11, _ := strconv.Atoi(record[11])
+			val10, _ := strconv.Atoi(record[10])
+
+			// Calculate strike (example of a calculation)
+			strikeValue := strconv.Itoa(val9 / (val11 * int(math.Pow(10, float64(val10)))))
+
+			// Send the symbol data through the channel
+			ch <- map[string]string{
+				"segment":         record[0],
+				"token":           record[1],
+				"symbol":          record[2],
+				"trading_symbol":  record[3],
+				"instrument_type": record[4],
+				"expiry":          record[5],
+				"tick_size":       record[6],
+				"lot_size":        record[7],
+				"option_type":     record[8],
+				"strike":          strikeValue,
+				"isin":            record[12],
+				"price_mult":      record[13],
+			}
+		}
+	}()
+	return ch, nil
 }

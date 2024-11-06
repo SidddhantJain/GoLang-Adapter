@@ -22,10 +22,10 @@ type ConnectToIntegrate struct {
 	ProductTypes           []string
 	SubscriptionTypes      []string
 	ReqSess                *http.Client
-	SessionExpiredCallback func(err error)
+	SessionExpiredCallback func()
 	GTTConditionTypes      []string
 	TimeframeTypes         []string
-	Symbols                []map[string]interface{}
+	Symbols                chan map[string]interface{}
 	// SuserToken             string
 }
 
