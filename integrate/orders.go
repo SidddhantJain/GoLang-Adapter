@@ -1,186 +1,163 @@
 package integrate
 
 import (
-    "errors"
-    "fmt"
-    "log"
-)
-
-type IntegrateOrders struct {
-    c2i     *ConnectToIntegrate
-    logging bool
-}
-
-// NewIntegrateOrders initializes a new instance of IntegrateOrders
-func NewIntegrateOrders(connectToIntegrate *ConnectToIntegrate, logging bool) *IntegrateOrders {
-    return &IntegrateOrders{
-        c2i:     connectToIntegrate,
-        logging: logging,
-    }
-}
-
-// PlaceOrder places an order and returns order details.
-func (io *IntegrateOrders) PlaceOrder(
-    exchange string,
-    orderType string,
-    price float64,
-    priceType string,
-    productType string,
-    quantity int,
-    tradingSymbol string,
-    amo *string,
-    bookLossPrice *float64,
-    bookProfitPrice *float64,
-    disclosedQuantity *int,
-    marketProtection *float64,
-    remarks *string,
-    trailingPrice *float64,
-    triggerPrice *float64,
-    validity string,
-) (map[string]interface{}, error) {
-
-    // Validate exchange, order type, price type, and product type
-    if !io.isValidExchange(exchange) {
-        return nil, errors.New("invalid exchange type")
-    }
-    if !io.isValidOrderType(orderType) {
-        return nil, errors.New("invalid order type")
-    }
-    if !io.isValidPriceType(priceType) {
-        return nil, errors.New("invalid price type")
-    }
-    if !io.isValidProductType(productType) {
-        return nil, errors.New("invalid product type")
-    }
-
-    // Validate price for market orders
-    if priceType == "MARKET" && price != 0 {
-        return nil, errors.New("price should be 0 for market order")
-    }
-
-    // Validate trigger price for SL-LIMIT orders
-    if priceType == "SL-LIMIT" {
-        if orderType == "BUY" && triggerPrice != nil && *triggerPrice > price {
-            return nil, errors.New("trigger price cannot be greater than price for SL-LIMIT BUY order")
-        } else if orderType == "SELL" && triggerPrice != nil && *triggerPrice < price {
-            return nil, errors.New("trigger price cannot be lesser than price for SL-LIMIT SELL order")
-        }
-    }
-
-    // Validate quantity
-    if quantity == 0 {
-        return nil, errors.New("quantity cannot be 0")
-    }
-
-    // Construct the JSON payload for the request
-    jsonParams := map[string]interface{}{
-        "exchange":         exchange,
-        "order_type":       orderType,
-        "price":            price,
-        "price_type":       priceType,
-        "product_type":     productType,
-        "quantity":         quantity,
-        "tradingsymbol":    tradingSymbol,
-        "validity":         validity,
-    }
-
-    if amo != nil {
-        jsonParams["amo"] = *amo
-    }
-    if bookLossPrice != nil {
-        jsonParams["book_loss_price"] = *bookLossPrice
-    }
-    if bookProfitPrice != nil {
-        jsonParams["book_profit_price"] = *bookProfitPrice
-    }
-    if disclosedQuantity != nil {
-        jsonParams["disclosed_quantity"] = *disclosedQuantity
-    }
-    if marketProtection != nil {
-        jsonParams["market_protection"] = *marketProtection
-    }
-    if remarks != nil {
-        jsonParams["remarks"] = *remarks
-    }
-    if trailingPrice != nil {
-        jsonParams["trailing_price"] = *trailingPrice
-    }
-    if triggerPrice != nil {
-        jsonParams["trigger_price"] = *triggerPrice
-    }
-
-    // Send request
-    return io.c2i.sendRequest(io.c2i.baseURL, "placeorder", "POST", jsonParams)
-}
-
-// Additional helper functions to validate fields
-
-func (io *IntegrateOrders) isValidExchange(exchange string) bool {
-    for _, ex := range io.c2i.ExchangeTypes {
-        if ex == exchange {
-            return true
-        }
-    }
-    return false
-}
-
-func (io *IntegrateOrders) isValidOrderType(orderType string) bool {
-    for _, ot := range io.c2i.OrderTypes {
-        if ot == orderType {
-            return true
-        }
-    }
-    return false
-}
-
-func (io *IntegrateOrders) isValidPriceType(priceType string) bool {
-    for _, pt := range io.c2i.PriceTypes {
-        if pt == priceType {
-            return true
-        }
-    }
-    return false
-}
-
-func (io *IntegrateOrders) isValidProductType(productType string) bool {
-    for _, pt := range io.c2i.ProductTypes {
-        if pt == productType {
-            return true
-        }
-    }
-    return false
-}
-
-
-import (
+	"adapter-project/structs"
 	"errors"
 	"fmt"
 	"net/http"
 )
 
-// OrderParams represents the parameters required to modify an order.
-type OrderParams struct {
-	Exchange          string
-	OrderID           string
-	OrderType         string
-	Price             float64
-	PriceType         string
-	ProductType       string
-	Quantity          int
-	TradingSymbol     string
-	Amo               *string  // Optional
-	BookLossPrice     *float64 // Optional
-	BookProfitPrice   *float64 // Optional
-	DisclosedQuantity *int     // Optional
-	MarketProtection  *float64 // Optional
-	Remarks           *string  // Optional
-	TrailingPrice     *float64 // Optional
-	TriggerPrice      *float64 // Optional
-	Validity          string
+type IntegrateOrders struct {
+	c2i     *LocalConnect
+	logging bool
 }
 
+// NewIntegrateOrders initializes a new instance of IntegrateOrders
+func NewIntegrateOrders(connectToIntegrate *structs.ConnectToIntegrate, logging bool) *IntegrateOrders {
+	return &IntegrateOrders{
+		logging: logging,
+		c2i: &LocalConnect{
+			ConnectToIntegrate: connectToIntegrate,
+		},
+	}
+}
+
+// PlaceOrder places an order and returns order details.
+func (io *IntegrateOrders) PlaceOrder(
+	exchange string,
+	orderType string,
+	price float64,
+	priceType string,
+	productType string,
+	quantity int,
+	tradingSymbol string,
+	amo *string,
+	bookLossPrice *float64,
+	bookProfitPrice *float64,
+	disclosedQuantity *int,
+	marketProtection *float64,
+	remarks *string,
+	trailingPrice *float64,
+	triggerPrice *float64,
+	validity string,
+) (map[string]interface{}, error) {
+
+	// Validate exchange, order type, price type, and product type
+	if !io.isValidExchange(exchange) {
+		return nil, errors.New("invalid exchange type")
+	}
+	if !io.isValidOrderType(orderType) {
+		return nil, errors.New("invalid order type")
+	}
+	if !io.isValidPriceType(priceType) {
+		return nil, errors.New("invalid price type")
+	}
+	if !io.isValidProductType(productType) {
+		return nil, errors.New("invalid product type")
+	}
+
+	// Validate price for market orders
+	if priceType == "MARKET" && price != 0 {
+		return nil, errors.New("price should be 0 for market order")
+	}
+
+	// Validate trigger price for SL-LIMIT orders
+	if priceType == "SL-LIMIT" {
+		if orderType == "BUY" && triggerPrice != nil && *triggerPrice > price {
+			return nil, errors.New("trigger price cannot be greater than price for SL-LIMIT BUY order")
+		} else if orderType == "SELL" && triggerPrice != nil && *triggerPrice < price {
+			return nil, errors.New("trigger price cannot be lesser than price for SL-LIMIT SELL order")
+		}
+	}
+
+	// Validate quantity
+	if quantity == 0 {
+		return nil, errors.New("quantity cannot be 0")
+	}
+
+	// Construct the JSON payload for the request
+	jsonParams := map[string]interface{}{
+		"exchange":      exchange,
+		"order_type":    orderType,
+		"price":         price,
+		"price_type":    priceType,
+		"product_type":  productType,
+		"quantity":      quantity,
+		"tradingsymbol": tradingSymbol,
+		"validity":      validity,
+	}
+
+	if amo != nil {
+		jsonParams["amo"] = *amo
+	}
+	if bookLossPrice != nil {
+		jsonParams["book_loss_price"] = *bookLossPrice
+	}
+	if bookProfitPrice != nil {
+		jsonParams["book_profit_price"] = *bookProfitPrice
+	}
+	if disclosedQuantity != nil {
+		jsonParams["disclosed_quantity"] = *disclosedQuantity
+	}
+	if marketProtection != nil {
+		jsonParams["market_protection"] = *marketProtection
+	}
+	if remarks != nil {
+		jsonParams["remarks"] = *remarks
+	}
+	if trailingPrice != nil {
+		jsonParams["trailing_price"] = *trailingPrice
+	}
+	if triggerPrice != nil {
+		jsonParams["trigger_price"] = *triggerPrice
+	}
+
+	// Send request
+	return io.c2i.sendRequest(io.c2i.BaseURL, "placeorder", "POST", nil, jsonParams, nil, nil, nil)
+}
+
+// Additional helper functions to validate fields
+
+func (io *IntegrateOrders) isValidExchange(exchange string) bool {
+	for _, ex := range io.c2i.ExchangeTypes {
+		if ex == exchange {
+			return true
+		}
+	}
+	return false
+}
+
+func (io *IntegrateOrders) isValidOrderType(orderType string) bool {
+	for _, ot := range io.c2i.OrderTypes {
+		if ot == orderType {
+			return true
+		}
+	}
+	return false
+}
+
+func (io *IntegrateOrders) isValidPriceType(priceType string) bool {
+	for _, pt := range io.c2i.PriceTypes {
+		if pt == priceType {
+			return true
+		}
+	}
+	return false
+}
+
+func (io *IntegrateOrders) isValidProductType(productType string) bool {
+	for _, pt := range io.c2i.ProductTypes {
+		if pt == productType {
+			return true
+		}
+	}
+	return false
+}
+
+// OrderParams represents the parameters required to modify an order.
+
 // ModifyOrder modifies an open order based on the given parameters.
-func (c *Client) ModifyOrder(params OrderParams) (map[string]interface{}, error) {
+func (c *Client) ModifyOrder(params structs.ModifyOrderParams) (map[string]interface{}, error) {
 	// Check exchange type
 	if !contains(c.ExchangeTypes, params.Exchange) {
 		return nil, errors.New("invalid exchange type")
@@ -272,12 +249,6 @@ func addOptionalField(params map[string]interface{}, key string, value interface
 	}
 }
 
-
-import (
-	"errors"
-	"fmt"
-)
-
 // CancelOrder cancels an order based on the order ID.
 func (c *Client) CancelOrder(orderID string) (map[string]interface{}, error) {
 	if orderID == "" {
@@ -345,15 +316,15 @@ func (c *Client) SliceOrder(
 
 	// Prepare JSON parameters
 	jsonParams := map[string]interface{}{
-		"exchange":           exchange,
-		"orderType":          orderType,
-		"price":              price,
-		"priceType":          priceType,
-		"productType":        productType,
-		"quantity":           quantity,
-		"slices":             slices,
-		"tradingsymbol":      tradingsymbol,
-		"validity":           validity,
+		"exchange":      exchange,
+		"orderType":     orderType,
+		"price":         price,
+		"priceType":     priceType,
+		"productType":   productType,
+		"quantity":      quantity,
+		"slices":        slices,
+		"tradingsymbol": tradingsymbol,
+		"validity":      validity,
 	}
 
 	// Optional parameters
@@ -413,128 +384,115 @@ func isValidProductType(productType string) bool {
 	return validProductTypes[productType]
 }
 
-
-import (
-    "errors"
-    "fmt"
-)
-
 // ConvertPositionProductType converts an open position's product type.
 func (c *Client) ConvertPositionProductType(
-    exchange string,
-    orderType string,
-    previousProduct string,
-    productType string,
-    quantity int,
-    tradingSymbol string,
-    positionType string,
+	exchange string,
+	orderType string,
+	previousProduct string,
+	productType string,
+	quantity int,
+	tradingSymbol string,
+	positionType string,
 ) (map[string]interface{}, error) {
 
-    // Validate parameters
-    if !contains(c.c2i.exchangeTypes, exchange) {
-        return nil, errors.New("invalid exchange type")
-    }
-    if !contains(c.c2i.orderTypes, orderType) {
-        return nil, errors.New("invalid order type")
-    }
-    if !contains(c.c2i.productTypes, productType) || !contains(c.c2i.productTypes, previousProduct) {
-        return nil, errors.New("invalid product type")
-    }
-    if quantity == 0 {
-        return nil, errors.New("quantity cannot be 0")
-    }
+	// Validate parameters
+	if !contains(c.c2i.exchangeTypes, exchange) {
+		return nil, errors.New("invalid exchange type")
+	}
+	if !contains(c.c2i.orderTypes, orderType) {
+		return nil, errors.New("invalid order type")
+	}
+	if !contains(c.c2i.productTypes, productType) || !contains(c.c2i.productTypes, previousProduct) {
+		return nil, errors.New("invalid product type")
+	}
+	if quantity == 0 {
+		return nil, errors.New("quantity cannot be 0")
+	}
 
-    // Prepare JSON parameters
-    jsonParams := map[string]interface{}{
-        "exchange":         exchange,
-        "orderType":        orderType,
-        "previousProduct":  previousProduct,
-        "productType":      productType,
-        "quantity":         quantity,
-        "tradingSymbol":    tradingSymbol,
-        "positionType":     positionType,
-    }
+	// Prepare JSON parameters
+	jsonParams := map[string]interface{}{
+		"exchange":        exchange,
+		"orderType":       orderType,
+		"previousProduct": previousProduct,
+		"productType":     productType,
+		"quantity":        quantity,
+		"tradingSymbol":   tradingSymbol,
+		"positionType":    positionType,
+	}
 
-    // Send request
-    response, err := c.c2i.SendRequest(
-        c.c2i.BaseURL,
-        "productconversion",
-        "POST",
-        jsonParams,
-    )
-    if err != nil {
-        return nil, err
-    }
+	// Send request
+	response, err := c.c2i.SendRequest(
+		c.c2i.BaseURL,
+		"productconversion",
+		"POST",
+		jsonParams,
+	)
+	if err != nil {
+		return nil, err
+	}
 
-    return response, nil
+	return response, nil
 }
 
 // PlaceGTTOrder places a GTT order.
 func (c *Client) PlaceGTTOrder(
-    exchange string,
-    orderType string,
-    price float64,
-    quantity int,
-    tradingSymbol string,
-    alertPrice float64,
-    condition string,
+	exchange string,
+	orderType string,
+	price float64,
+	quantity int,
+	tradingSymbol string,
+	alertPrice float64,
+	condition string,
 ) (map[string]interface{}, error) {
 
-    // Validate parameters
-    if !contains(c.c2i.exchangeTypes, exchange) {
-        return nil, errors.New("invalid exchange type")
-    }
-    if !contains(c.c2i.orderTypes, orderType) {
-        return nil, errors.New("invalid order type")
-    }
-    if quantity == 0 {
-        return nil, errors.New("quantity cannot be 0")
-    }
-    if !contains(c.c2i.gttConditionTypes, condition) {
-        return nil, errors.New("invalid GTT condition")
-    }
+	// Validate parameters
+	if !contains(c.c2i.exchangeTypes, exchange) {
+		return nil, errors.New("invalid exchange type")
+	}
+	if !contains(c.c2i.orderTypes, orderType) {
+		return nil, errors.New("invalid order type")
+	}
+	if quantity == 0 {
+		return nil, errors.New("quantity cannot be 0")
+	}
+	if !contains(c.c2i.gttConditionTypes, condition) {
+		return nil, errors.New("invalid GTT condition")
+	}
 
-    // Prepare JSON parameters
-    jsonParams := map[string]interface{}{
-        "exchange":      exchange,
-        "orderType":     orderType,
-        "price":         price,
-        "quantity":      quantity,
-        "tradingSymbol": tradingSymbol,
-        "alertPrice":    alertPrice,
-        "condition":     condition,
-    }
+	// Prepare JSON parameters
+	jsonParams := map[string]interface{}{
+		"exchange":      exchange,
+		"orderType":     orderType,
+		"price":         price,
+		"quantity":      quantity,
+		"tradingSymbol": tradingSymbol,
+		"alertPrice":    alertPrice,
+		"condition":     condition,
+	}
 
-    // Send request
-    response, err := c.c2i.SendRequest(
-        c.c2i.BaseURL,
-        "gttplaceorder",
-        "POST",
-        jsonParams,
-    )
-    if err != nil {
-        return nil, err
-    }
+	// Send request
+	response, err := c.c2i.SendRequest(
+		c.c2i.BaseURL,
+		"gttplaceorder",
+		"POST",
+		jsonParams,
+	)
+	if err != nil {
+		return nil, err
+	}
 
-    return response, nil
+	return response, nil
 }
 
 // Utility function to check if a string exists in a slice
 func contains(slice []string, item string) bool {
-    for _, s := range slice {
-        if s == item {
-            return true
-        }
-    }
-    return false
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
-
-
-import (
-	"errors"
-	"fmt"
-	"github.com/path/to/types" // Adjust this path to the actual location of the types package
-)
 
 type Orders struct {
 	c2i *types.C2I
@@ -558,14 +516,14 @@ func (o *Orders) ModifyGTTOrder(
 
 	// Prepare JSON parameters for request
 	jsonParams := map[string]interface{}{
-		"exchange":     exchange,
-		"alert_id":     alertID,
-		"order_type":   orderType,
-		"price":        price,
-		"quantity":     quantity,
+		"exchange":      exchange,
+		"alert_id":      alertID,
+		"order_type":    orderType,
+		"price":         price,
+		"quantity":      quantity,
 		"tradingsymbol": tradingsymbol,
-		"alert_price":  alertPrice,
-		"condition":    condition,
+		"alert_price":   alertPrice,
+		"condition":     condition,
 	}
 
 	return o.c2i.SendRequest("gttmodify", "POST", jsonParams)
@@ -602,13 +560,13 @@ func (o *Orders) PlaceOCOOrder(
 
 	// Prepare JSON parameters for request
 	jsonParams := map[string]interface{}{
-		"exchange":        exchange,
-		"order_type":      orderType,
-		"tradingsymbol":   tradingsymbol,
+		"exchange":          exchange,
+		"order_type":        orderType,
+		"tradingsymbol":     tradingsymbol,
 		"stoploss_quantity": stoplossQuantity,
-		"stoploss_price":  stoplossPrice,
-		"target_quantity": targetQuantity,
-		"target_price":    targetPrice,
+		"stoploss_price":    stoplossPrice,
+		"target_quantity":   targetQuantity,
+		"target_price":      targetPrice,
 	}
 	if remarks != nil {
 		jsonParams["remarks"] = *remarks
@@ -616,13 +574,6 @@ func (o *Orders) PlaceOCOOrder(
 
 	return o.c2i.SendRequest("ocoplaceorder", "POST", jsonParams)
 }
-
-
-import (
-	"errors"
-	"fmt"
-	"github.com/path/to/types" // Adjust this path to the actual location of the types package
-)
 
 func (o *Orders) ModifyOCOOrder(
 	exchange, alertID, orderType, tradingsymbol string,
@@ -670,11 +621,6 @@ func (o *Orders) CancelOCOOrder(alertID string) (map[string]interface{}, error) 
 
 	return o.c2i.SendRequestWithURLParams("ococancel/{alert_id}", "GET", nil, urlParams)
 }
-
-
-import (
-	"github.com/path/to/types" // Adjust this path to the actual location of the types package
-)
 
 func (o *Orders) Orders() (map[string]interface{}, error) {
 	// Retrieve list of orders
