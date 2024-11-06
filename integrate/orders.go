@@ -17,8 +17,7 @@ func NewIntegrateOrders(connectToIntegrate *structs.ConnectToIntegrate, logging 
 	return &IntegrateOrders{
 		logging: logging,
 		c2i: &LocalConnect{
-			ConnectToIntegrate: connectToIntegrate,
-		},
+			ConnectToIntegrate: connectToIntegrate},
 	}
 }
 
@@ -113,13 +112,13 @@ func (io *IntegrateOrders) PlaceOrder(
 	}
 
 	// Send request
-	return io.c2i.sendRequest(io.c2i.BaseURL, "placeorder", "POST", nil, jsonParams, nil, nil, nil)
+	return io.c2i.sendRequest(io.c2i.ConnectToIntegrate.BaseURL, "placeorder", "POST", nil, jsonParams, nil, nil, nil)
 }
 
 // Additional helper functions to validate fields
 
 func (io *IntegrateOrders) isValidExchange(exchange string) bool {
-	for _, ex := range io.c2i.ExchangeTypes {
+	for _, ex := range io.c2i.ConnectToIntegrate.ExchangeTypes {
 		if ex == exchange {
 			return true
 		}
@@ -128,7 +127,7 @@ func (io *IntegrateOrders) isValidExchange(exchange string) bool {
 }
 
 func (io *IntegrateOrders) isValidOrderType(orderType string) bool {
-	for _, ot := range io.c2i.OrderTypes {
+	for _, ot := range io.c2i.ConnectToIntegrate.OrderTypes {
 		if ot == orderType {
 			return true
 		}
@@ -137,7 +136,7 @@ func (io *IntegrateOrders) isValidOrderType(orderType string) bool {
 }
 
 func (io *IntegrateOrders) isValidPriceType(priceType string) bool {
-	for _, pt := range io.c2i.PriceTypes {
+	for _, pt := range io.c2i.ConnectToIntegrate.PriceTypes {
 		if pt == priceType {
 			return true
 		}
@@ -146,7 +145,7 @@ func (io *IntegrateOrders) isValidPriceType(priceType string) bool {
 }
 
 func (io *IntegrateOrders) isValidProductType(productType string) bool {
-	for _, pt := range io.c2i.ProductTypes {
+	for _, pt := range io.c2i.ConnectToIntegrate.ProductTypes {
 		if pt == productType {
 			return true
 		}
@@ -157,9 +156,9 @@ func (io *IntegrateOrders) isValidProductType(productType string) bool {
 // OrderParams represents the parameters required to modify an order.
 
 // ModifyOrder modifies an open order based on the given parameters.
-func (c *Client) ModifyOrder(params structs.ModifyOrderParams) (map[string]interface{}, error) {
+func (c *IntegrateOrders) ModifyOrder(params structs.ModifyOrderParams) (map[string]interface{}, error) {
 	// Check exchange type
-	if !contains(c.ExchangeTypes, params.Exchange) {
+	if !contains(c.c2i.ExchangeTypes, params.Exchange) {
 		return nil, errors.New("invalid exchange type")
 	}
 
