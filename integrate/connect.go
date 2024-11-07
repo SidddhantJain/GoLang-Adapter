@@ -12,12 +12,10 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -142,7 +140,7 @@ func NewConnectToIntegrate(
 }
 
 // Login
-func (c *LocalConnect) login(
+func (c *LocalConnect) Login(
 	apiToken string,
 	apiSecret string,
 	totp *string) error {
@@ -399,16 +397,16 @@ func (s *LocalConnect) sendRequest(
 	}
 	if s.Logging {
 		logger.Printf(
-            "Request: %s %s %v %v %v %v %v\n", method, urlStr, queryParams, jsonParams, dataParams, headers, extraHeaders,
-        )
-
+			"Request: %s %s %v %v %v %v %v\n", method, urlStr, queryParams, jsonParams, dataParams, headers, extraHeaders,
+		)
+	}
 	// Add headers to request
 	for k, v := range headers {
 		req.Header.Add(k, v)
 	}
 
 	// Set request body based on method
-	if method == "POST"  {
+	if method == "POST" {
 		if jsonParams != nil {
 			jsonData, err := json.Marshal(jsonParams)
 			if err != nil {
@@ -491,105 +489,105 @@ func (s *LocalConnect) sendRequest(
 	return data, nil
 }
 
-func (c *LocalConnect) Symbols() (<-chan map[string]string, error) {
-	// Set the symbols file path
-	symbolsFilename := filepath.Join(filepath.Dir(os.Args[0]), "allmaster.csv")
+// func (c *structs.ConnectToIntegrate) Symbols() (<-chan map[string]string, error) {
+// 	// Set the symbols file path
+// 	symbolsFilename := filepath.Join(filepath.Dir(os.Args[0]), "allmaster.csv")
 
-	// Check if the symbols file exists
-	if _, err := os.Stat(symbolsFilename); os.IsNotExist(err) {
-		// Download and unzip the symbols file if not present
-		resp, err := http.Get("https://app.definedgesecurities.com/public/allmaster.zip")
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
+// 	// Check if the symbols file exists
+// 	if _, err := os.Stat(symbolsFilename); os.IsNotExist(err) {
+// 		// Download and unzip the symbols file if not present
+// 		resp, err := http.Get("https://app.definedgesecurities.com/public/allmaster.zip")
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		defer resp.Body.Close()
 
-		// Read the response body into a byte slice
-		zipBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
+// 		// Read the response body into a byte slice
+// 		zipBytes, err := io.ReadAll(resp.Body)
+// 		if err != nil {
+// 			return nil, err
+// 		}
 
-		// Create a zip reader using a bytes.Reader
-		readerAt := bytes.NewReader(zipBytes)
-		zipReader, err := zip.NewReader(readerAt, int64(len(zipBytes)))
-		if err != nil {
-			return nil, err
-		}
+// 		// Create a zip reader using a bytes.Reader
+// 		readerAt := bytes.NewReader(zipBytes)
+// 		zipReader, err := zip.NewReader(readerAt, int64(len(zipBytes)))
+// 		if err != nil {
+// 			return nil, err
+// 		}
 
-		// Locate and extract the CSV file in the zip
-		for _, f := range zipReader.File {
-			if f.Name == "allmaster.csv" {
-				outFile, err := os.Create(symbolsFilename)
-				if err != nil {
-					return nil, err
-				}
-				defer outFile.Close()
+// 		// Locate and extract the CSV file in the zip
+// 		for _, f := range zipReader.File {
+// 			if f.Name == "allmaster.csv" {
+// 				outFile, err := os.Create(symbolsFilename)
+// 				if err != nil {
+// 					return nil, err
+// 				}
+// 				defer outFile.Close()
 
-				fileInZip, err := f.Open()
-				if err != nil {
-					return nil, err
-				}
-				defer fileInZip.Close()
+// 				fileInZip, err := f.Open()
+// 				if err != nil {
+// 					return nil, err
+// 				}
+// 				defer fileInZip.Close()
 
-				_, err = io.Copy(outFile, fileInZip)
-				if err != nil {
-					return nil, err
-				}
-				break
-			}
-		}
-	}
+// 				_, err = io.Copy(outFile, fileInZip)
+// 				if err != nil {
+// 					return nil, err
+// 				}
+// 				break
+// 			}
+// 		}
+// 	}
 
-	// Open the symbols file
-	file, err := os.Open(symbolsFilename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
+// 	// Open the symbols file
+// 	file, err := os.Open(symbolsFilename)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	defer file.Close()
 
-	// Create a channel to send symbol data
-	ch := make(chan map[string]string)
+// 	// Create a channel to send symbol data
+// 	ch := make(chan map[string]string)
 
-	// Create a CSV reader
-	reader := csv.NewReader(file)
-	go func() {
-		defer close(ch)
-		for {
-			// Read a record from the CSV
-			record, err := reader.Read()
-			if err == io.EOF {
-				return
-			}
-			if err != nil {
-				fmt.Println("Error reading CSV:", err)
-				return
-			}
+// 	// Create a CSV reader
+// 	reader := csv.NewReader(file)
+// 	go func() {
+// 		defer close(ch)
+// 		for {
+// 			// Read a record from the CSV
+// 			record, err := reader.Read()
+// 			if err == io.EOF {
+// 				return
+// 			}
+// 			if err != nil {
+// 				fmt.Println("Error reading CSV:", err)
+// 				return
+// 			}
 
-			// Prepare the symbol data as a map
-			val9, _ := strconv.Atoi(record[9])
-			val11, _ := strconv.Atoi(record[11])
-			val10, _ := strconv.Atoi(record[10])
+// 			// Prepare the symbol data as a map
+// 			val9, _ := strconv.Atoi(record[9])
+// 			val11, _ := strconv.Atoi(record[11])
+// 			val10, _ := strconv.Atoi(record[10])
 
-			// Calculate strike (example of a calculation)
-			strikeValue := strconv.Itoa(val9 / (val11 * int(math.Pow(10, float64(val10)))))
+// 			// Calculate strike (example of a calculation)
+// 			strikeValue := strconv.Itoa(val9 / (val11 * int(math.Pow(10, float64(val10)))))
 
-			// Send the symbol data through the channel
-			ch <- map[string]string{
-				"segment":         record[0],
-				"token":           record[1],
-				"symbol":          record[2],
-				"trading_symbol":  record[3],
-				"instrument_type": record[4],
-				"expiry":          record[5],
-				"tick_size":       record[6],
-				"lot_size":        record[7],
-				"option_type":     record[8],
-				"strike":          strikeValue,
-				"isin":            record[12],
-				"price_mult":      record[13],
-			}
-		}
-	}()
-	return ch, nil
-}
+// 			// Send the symbol data through the channel
+// 			ch <- map[string]string{
+// 				"segment":         record[0],
+// 				"token":           record[1],
+// 				"symbol":          record[2],
+// 				"trading_symbol":  record[3],
+// 				"instrument_type": record[4],
+// 				"expiry":          record[5],
+// 				"tick_size":       record[6],
+// 				"lot_size":        record[7],
+// 				"option_type":     record[8],
+// 				"strike":          strikeValue,
+// 				"isin":            record[12],
+// 				"price_mult":      record[13],
+// 			}
+// 		}
+// 	}()
+// 	return ch, nil
+// }
