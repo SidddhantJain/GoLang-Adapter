@@ -24,7 +24,7 @@ type LocalConnect struct {
 	*structs.ConnectToIntegrate
 }
 
-// Set up a logger
+// Setting up a logger
 var logger = log.New(os.Stdout, "INFO: ", log.LstdFlags|log.Lshortfile)
 
 // Constants for exchanges
