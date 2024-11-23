@@ -20,14 +20,15 @@ import (
 	"time"
 )
 
+// LocalConnect provides an interface to interact with Definedge Securities API.
 type LocalConnect struct {
 	*structs.ConnectToIntegrate
 }
 
-// Setting up a logger
+// Logger setup
 var logger = log.New(os.Stdout, "INFO: ", log.LstdFlags|log.Lshortfile)
 
-// Constants for exchanges
+// Exchange types
 const (
 	ExchangeTypeNSE = "NSE"
 	ExchangeTypeBSE = "BSE"
@@ -36,13 +37,14 @@ const (
 	ExchangeTypeMCX = "MCX"
 )
 
-// Constants for order types
+
+// Order types
 const (
 	OrderTypeBuy  = "BUY"
 	OrderTypeSell = "SELL"
 )
 
-// Constants for price types
+// Price types
 const (
 	PriceTypeMarket = "MARKET"
 	PriceTypeLimit  = "LIMIT"
@@ -50,28 +52,28 @@ const (
 	PriceTypeSlLmt  = "SL-LIMIT"
 )
 
-// Constants for product types
+// Product types
 const (
 	ProductTypeCNC      = "CNC"
 	ProductTypeIntraday = "INTRADAY"
 	ProductTypeNormal   = "NORMAL"
 )
 
-// Constants for subscription types
+// Subscription types
 const (
 	SubscriptionTypeTick  = "TICK"
 	SubscriptionTypeOrder = "ORDER"
 	SubscriptionTypeDepth = "DEPTH"
 )
 
-// Constants for validity types
+// Validity types
 const (
 	ValidityTypeDay = "DAY"
 	ValidityTypeIOC = "IOC"
 	ValidityTypeEOS = "EOS"
 )
 
-// Constants for order statuses
+// Order statuses
 const (
 	OrderStatusNew       = "NEW"
 	OrderStatusOpen      = "OPEN"
@@ -81,18 +83,19 @@ const (
 	OrderStatusReplaced  = "REPLACED"
 )
 
-// Constants for GTT conditions
+// GTT conditions
 const (
 	GttConditionLtpBelow = "LTP_BELOW"
 	GttConditionLtpAbove = "LTP_ABOVE"
 )
 
-// Constants for timeframe types
+// Timeframe types
 const (
 	TimeframeTypeMin  = "minute"
 	TimeframeTypeDay  = "day"
 	TimeframeTypeTick = "tick"
 )
+
 
 func NewConnectToIntegrate(
 	loginURL string,
