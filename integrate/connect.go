@@ -253,66 +253,66 @@ func (c *LocalConnect) setSessionKeys(uid string,
 }
 
 // SymbolsGenerator returns a channel that yields symbols
-// func SymbolsGenerator() <-chan Symbol {
-// 	symbolsChannel := make(chan Symbol)
+func SymbolsGenerator() <-chan Symbol {
+	symbolsChannel := make(chan Symbol)
 
-// 	go func() {
-// 		defer close(symbolsChannel)
+ 	go func() {
+ 		defer close(symbolsChannel)
 
-// 		// Path for the symbols file
-// 		symbolsFilename := filepath.Join("allmaster.csv")
+ 		// Path for the symbols file
+ 		symbolsFilename := filepath.Join("allmaster.csv")
 
-// 		// Check if the file exists
-// 		if _, err := os.Stat(symbolsFilename); os.IsNotExist(err) {
-// 			// Download the master file if not present
-// 			err := downloadSymbols()
-// 			if err != nil {
-// 				fmt.Println("Error downloading symbols:", err)
-// 				return
-// 			}
-// 		}
+ 		// Check if the file exists
+ 		if _, err := os.Stat(symbolsFilename); os.IsNotExist(err) {
+ 			// Download the master file if not present
+ 			err := downloadSymbols()
+			if err != nil {
+				fmt.Println("Error downloading symbols:", err)
+ 				return
+ 			}
+ 		}
 
-// 		// Open the symbols file
-// 		file, err := os.Open(symbolsFilename)
-// 		if err != nil {
-// 			fmt.Println("Error opening symbols file:", err)
-// 			return
-// 		}
-// 		defer file.Close()
+ 		// Open the symbols file
+ 		file, err := os.Open(symbolsFilename)
+ 		if err != nil {
+ 			fmt.Println("Error opening symbols file:", err)
+ 			return
+ 		}
+ 		defer file.Close()
 
-// 		// Read the CSV file
-// 		reader := csv.NewReader(file)
-// 		records, err := reader.ReadAll()
-// 		if err != nil {
-// 			fmt.Println("Error reading CSV file:", err)
-// 			return
-// 		}
+		// Read the CSV file
+ 		reader := csv.NewReader(file)
+		records, err := reader.ReadAll()
+		if err != nil {
+ 			fmt.Println("Error reading CSV file:", err)
+ 			return
+ 		}
 
-// 		// Create and yield symbols
-// 		for _, record := range records {
-// 			if len(record) < 14 { // Ensure there are enough columns
-// 				continue
-// 			}
-// 			symbol := Symbol{
-// 				Segment:        record[0],
-// 				Token:          record[1],
-// 				Symbol:         record[2],
-// 				TradingSymbol:  record[3],
-// 				InstrumentType: record[4],
-// 				Expiry:         record[5],
-// 				TickSize:       record[6],
-// 				LotSize:        record[7],
-// 				OptionType:     record[8],
-// 				Strike:         fmt.Sprintf("%d", int(int(record[9])/(int(record[11])*10^int(record[10])))), // Convert Strike to int and format
-// 				ISIN:           record[12],
-// 				PriceMult:      record[13],
-// 			}
-// 			symbolsChannel <- symbol
-// 		}
-// 	}()
+ 		// Create and yield symbols
+ 		for _, record := range records {
+ 			if len(record) < 14 { // Ensure there are enough columns
+ 				continue
+ 			}
+ 			symbol := Symbol{
+ 				Segment:        record[0],
+				Token:          record[1],
+ 				Symbol:         record[2],
+ 				TradingSymbol:  record[3],
+ 				InstrumentType: record[4],
+ 				Expiry:         record[5],
+ 				TickSize:       record[6],
+ 				LotSize:        record[7],
+ 				OptionType:     record[8],
+ 				Strike:         fmt.Sprintf("%d", int(int(record[9])/(int(record[11])*10^int(record[10])))), // Convert Strike to int and format
+ 				ISIN:           record[12],
+ 				PriceMult:      record[13],
+ 			}
+ 			symbolsChannel <- symbol
+ 		}
+ 	}()
 
-// 	return symbolsChannel
-// }
+ 	return symbolsChannel
+ }
 
 // downloadSymbols downloads the symbols file
 func downloadSymbols() error {
