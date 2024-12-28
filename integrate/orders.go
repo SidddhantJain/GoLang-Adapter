@@ -270,7 +270,7 @@ func (c *IntegrateOrders) CancelOrder(orderID string) (map[string]interface{}, e
 
 	// Prepare the route for cancellation
 	route := fmt.Sprintf("cancel/%s", orderID)
-	urlParams := map[string]string{"order_id": orderID}
+	urlParams := map[string]interface{}{"order_id": orderID}
 	// Send GET request for cancellation
 	response, err := c.c2i.sendRequest(c.c2i.BaseURL, route, "GET", urlParams, nil, nil, nil, nil)
 	if err != nil {
@@ -587,7 +587,7 @@ func (o *IntegrateOrders) ModifyGTTOrder(
 
 func (o *IntegrateOrders) CancelGTTOrder(alertID string) (map[string]interface{}, error) {
 	// Prepare URL parameters
-	urlParams := map[string]string{
+	urlParams := map[string]interface{}{
 		"alert_id": alertID,
 	}
 
@@ -709,7 +709,7 @@ func (o *IntegrateOrders) ModifyOCOOrder(
 
 func (o *IntegrateOrders) CancelOCOOrder(alertID string) (map[string]interface{}, error) {
 	// Prepare URL parameters
-	urlParams := map[string]string{
+	urlParams := map[string]interface{}{
 		"alert_id": alertID,
 	}
 	ocoCancel := fmt.Sprintf("ococancel/%s", alertID)
@@ -742,7 +742,7 @@ func (o *IntegrateOrders) Orders() (map[string]interface{}, error) {
 
 func (o *IntegrateOrders) Order(orderID string) (map[string]interface{}, error) {
 	// Retrieve status of a specific order
-	urlParams := map[string]string{
+	urlParams := map[string]interface{}{
 		"order_id": orderID,
 	}
 	orderRoute := fmt.Sprintf("order/%s", orderID)
