@@ -48,3 +48,19 @@ type ModifyOrderParams struct {
 	TriggerPrice      *float64 // Optional
 	Validity          string
 }
+
+
+type Symbol struct {
+    Segment        string
+    Token          string
+    Symbol         string
+    TradingSymbol  string
+    InstrumentType string
+    Expiry         string
+    TickSize       string
+    LotSize        string
+    OptionType     string
+    Strike         string
+    ISIN           string
+    PriceMult      string
+}

@@ -18,6 +18,7 @@ import (
 	"time"
 )
 
+// LocalConnect provides an interface to interact with Definedge Securities API.
 type LocalConnect struct {
 	*structs.ConnectToIntegrate
 }
