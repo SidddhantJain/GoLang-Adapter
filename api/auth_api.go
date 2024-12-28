@@ -1,6 +1,7 @@
 package api
 
 import (
+	"adapter-project/models"
 	"bytes"
 	"encoding/json"
 	"fmt"

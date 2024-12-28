@@ -727,6 +727,8 @@ func (o *IntegrateOrders) CancelOCOOrder(alertID string) (map[string]interface{}
 }
 
 func (o *IntegrateOrders) Orders() (map[string]interface{}, error) {
+	// logger.Printf("Making request to URL: %s", o.c2i.BaseURL+"orders")
+
 	// Retrieve list of orders
 	return o.c2i.sendRequest(
 		o.c2i.BaseURL,

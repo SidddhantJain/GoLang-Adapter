@@ -72,7 +72,7 @@ func NewConnectToIntegrate(
 		loginURL = "https://signin.definedgebroking.com/auth/realms/debroking/dsbpkc/"
 	}
 	if baseURL == "" {
-		baseURL = "https://api.definedgebroking.com/dart/v1/orders"
+		baseURL = "https://api.definedgebroking.com/dart/v1/"
 	}
 	if timeout == 0 {
 		timeout = 10
@@ -137,15 +137,20 @@ func (c *LocalConnect) Login(apiToken string, apiSecret string, totp *string) er
 	if err != nil {
 		return fmt.Errorf("failed to obtain session keys: %w", err)
 	}
-	uid, uidOk := response["uid"].(string)
-	actid, actidOk := response["actid"].(string)
-	apiSessionKey, apiSessionKeyOk := response["api_session_key"].(string)
-	wsSessionKey, wsSessionKeyOk := response["susertoken"].(string)
-	if !uidOk || !actidOk || !apiSessionKeyOk || !wsSessionKeyOk {
-		return errors.New("missing or invalid keys in API response")
-	}
+	// if uncomment the below code without the responce it gives an error
+	// uid, uidOk := response["uid"].(string)
+	// actid, actidOk := response["actid"].(string)
+	// apiSessionKey, apiSessionKeyOk := response["api_session_key"].(string)
+	// wsSessionKey, wsSessionKeyOk := response["susertoken"].(string)
+	// if !uidOk || !actidOk || !apiSessionKeyOk || !wsSessionKeyOk {
+	// 	return errors.New("missing or invalid keys in API response")
+	// }
 
-	fmt.Printf("uid %s, actid %s, apiSessionKey %s wssessionkey %s", uid, actid, apiSessionKey, wsSessionKey) // Debug print
+	// fmt.Printf("uid %s\n", uid)                       // Debug print
+	// fmt.Printf("actid %s\n", actid)                   // Debug print
+	// fmt.Printf("api_session_key %s\n", apiSessionKey) // Debug print
+	// fmt.Printf("susertoken %s\n", wsSessionKey)       // Debug print
+	// fmt.Print(response)
 
 	// Store session keys
 	// GIVING AN ERROR IN UID
@@ -161,12 +166,13 @@ func (c *LocalConnect) Login(apiToken string, apiSecret string, totp *string) er
 	if err := os.Remove(symbolsFile); err != nil && !os.IsNotExist(err) {
 		logger.Println("Symbols file not found or failed to delete.")
 	}
+	time.Sleep(3 * time.Millisecond) // its very necessary
 
 	return nil
 }
 
 // setSessionKeys stores session keys.
-func (c *LocalConnect) setSessionKeys(uid, actid, apiSessionKey, wsSessionKey string) {
+func (c *LocalConnect) setSessionKeys(uid string, actid string, apiSessionKey string, wsSessionKey string) {
 	c.UID = uid
 	c.ActID = actid
 	c.APISessionKey = apiSessionKey
@@ -219,7 +225,9 @@ func (s *LocalConnect) sendRequest(
 		req.Header.Add(k, fmt.Sprintf("%v", v))
 	}
 	if s.APISessionKey != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.APISessionKey))
+		// req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.APISessionKey))
+		// logger.Printf("Authorization Header: Bearer %s", s.APISessionKey)
+		req.Header.Set("Authorization", s.APISessionKey)
 	}
 	if jsonParams != nil {
 		req.Header.Set("Content-Type", "application/json")
