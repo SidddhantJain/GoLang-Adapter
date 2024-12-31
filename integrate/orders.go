@@ -4,6 +4,7 @@ import (
 	"adapter-project/structs"
 	"errors"
 	"fmt"
+	"time"
 )
 
 type IntegrateOrders struct {
@@ -727,19 +728,39 @@ func (o *IntegrateOrders) CancelOCOOrder(alertID string) (map[string]interface{}
 }
 
 func (o *IntegrateOrders) Orders() (map[string]interface{}, error) {
-	// logger.Printf("Making request to URL: %s", o.c2i.BaseURL+"orders")
-
+	logger.Printf("Making request to URL: %s", o.c2i.BaseURL+"orders")
+	tme := time.Now()
 	// Retrieve list of orders
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
-		"orders",
-		"GET",
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-	)
+	var orders map[string]interface{}
+	var err error
+	for i := 0; i < 3; i++ {
+		orders, err = o.c2i.sendRequest(
+			o.c2i.BaseURL,
+			"orders",
+			"GET",
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+		)
+		if err == nil {
+			print("Time taken to get orders: ", time.Since(tme).Seconds())
+			return orders, nil
+		}
+	}
+	return nil, err
+	// time.Sleep(30 * time.Millisecond)
+	// return o.c2i.sendRequest(
+	// 	o.c2i.BaseURL,
+	// 	"orders",
+	// 	"GET",
+	// 	nil,
+	// 	nil,
+	// 	nil,
+	// 	nil,
+	// 	nil,
+	// )
 }
 
 func (o *IntegrateOrders) Order(orderID string) (map[string]interface{}, error) {

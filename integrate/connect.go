@@ -78,13 +78,20 @@ func NewConnectToIntegrate(
 		timeout = 10
 	}
 	connect := &structs.ConnectToIntegrate{
-		Logging:  logging,
-		Timeout:  time.Duration(timeout) * time.Second,
-		Proxies:  proxies,
-		ReqSess:  &http.Client{Timeout: time.Duration(timeout) * time.Second},
-		LoginURL: loginURL,
-		BaseURL:  baseURL,
-		Symbols:  make(chan map[string]interface{}),
+		Logging:           logging,
+		Timeout:           time.Duration(timeout) * time.Second,
+		Proxies:           proxies,
+		ReqSess:           &http.Client{Timeout: time.Duration(timeout) * time.Second},
+		LoginURL:          loginURL,
+		BaseURL:           baseURL,
+		Symbols:           make(chan map[string]interface{}),
+		ExchangeTypes:     []string{"NSE", "BSE", "NFO", "CDS", "MCX"},
+		OrderTypes:        []string{"BUY", "SELL"},
+		PriceTypes:        []string{"MARKET", "LIMIT", "SL-MARKET", "SL-LIMIT"},
+		ProductTypes:      []string{"CNC", "INTRADAY", "NORMAL"},
+		SubscriptionTypes: []string{"TICK", "ORDER", "DEPTH"},
+		GTTConditionTypes: []string{"LTP_ABOVE", "LTP_BELOW"},
+		TimeframeTypes:    []string{"minute", "day", "tick"},
 	}
 	return &LocalConnect{connect}
 }
@@ -166,7 +173,7 @@ func (c *LocalConnect) Login(apiToken string, apiSecret string, totp *string) er
 	if err := os.Remove(symbolsFile); err != nil && !os.IsNotExist(err) {
 		logger.Println("Symbols file not found or failed to delete.")
 	}
-	time.Sleep(3 * time.Millisecond) // its very necessary
+	time.Sleep(100 * time.Millisecond) // its very necessary
 
 	return nil
 }
