@@ -1,169 +1,129 @@
 package integrate
 
 import (
-    "archive/zip"
-    "bytes"
-    "crypto/sha256"
-    "encoding/csv"
-    "encoding/hex"
-    "fmt"
-    "io"
-    "io/ioutil"
-    "log"
-    "net/http"
-    "os"
-    "path/filepath"
-    "strconv"
-    "time"
+	"adapter-project/structs"
+	"archive/zip"
+	"bufio"
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"math"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 )
 
-type ConnectToIntegrate struct {
-    LoginURL             string
-    BaseURL              string
-    Timeout              time.Duration
-    Logging              bool
-    Proxies              map[string]string
-    Uid                  string
-    Actid                string
-    APISessionKey        string
-    WSSessionKey         string
-    HTTPClient           *http.Client
-    ExchangeTypes        []string
-    OrderTypes           []string
-    PriceTypes           []string
-    ProductTypes         []string
-    SubscriptionTypes    []string
+// LocalConnect provides an interface to interact with Definedge Securities API.
+type LocalConnect struct {
+	*structs.ConnectToIntegrate
 }
 
-// Set up a logger
 var logger = log.New(os.Stdout, "INFO: ", log.LstdFlags|log.Lshortfile)
 
-// Constants for exchanges
+// Constants for exchanges, orders, prices, etc.
 const (
-	ExchangeTypeNSE = "NSE"
-	ExchangeTypeBSE = "BSE"
-	ExchangeTypeNFO = "NFO"
-	ExchangeTypeCDS = "CDS"
-	ExchangeTypeMCX = "MCX"
-)
-
-// Constants for order types
-const (
-	OrderTypeBuy  = "BUY"
-	OrderTypeSell = "SELL"
-)
-
-// Constants for price types
-const (
-	PriceTypeMarket  = "MARKET"
-	PriceTypeLimit   = "LIMIT"
-	PriceTypeSlMkt   = "SL-MARKET"
-	PriceTypeSlLmt   = "SL-LIMIT"
-)
-
-// Constants for product types
-const (
-	ProductTypeCNC      = "CNC"
-	ProductTypeIntraday = "INTRADAY"
-	ProductTypeNormal   = "NORMAL"
-)
-
-// Constants for subscription types
-const (
+	ExchangeTypeNSE       = "NSE"
+	ExchangeTypeBSE       = "BSE"
+	ExchangeTypeNFO       = "NFO"
+	ExchangeTypeCDS       = "CDS"
+	ExchangeTypeMCX       = "MCX"
+	OrderTypeBuy          = "BUY"
+	OrderTypeSell         = "SELL"
+	PriceTypeMarket       = "MARKET"
+	PriceTypeLimit        = "LIMIT"
+	PriceTypeSlMkt        = "SL-MARKET"
+	PriceTypeSlLmt        = "SL-LIMIT"
+	ProductTypeCNC        = "CNC"
+	ProductTypeIntraday   = "INTRADAY"
+	ProductTypeNormal     = "NORMAL"
 	SubscriptionTypeTick  = "TICK"
 	SubscriptionTypeOrder = "ORDER"
 	SubscriptionTypeDepth = "DEPTH"
+	ValidityTypeDay       = "DAY"
+	ValidityTypeIOC       = "IOC"
+	ValidityTypeEOS       = "EOS"
+	OrderStatusNew        = "NEW"
+	OrderStatusOpen       = "OPEN"
+	OrderStatusComplete   = "COMPLETE"
+	OrderStatusCancelled  = "CANCELED"
+	OrderStatusRejected   = "REJECTED"
+	OrderStatusReplaced   = "REPLACED"
+	GttConditionLtpAbove  = "LTP_ABOVE"
+	GttConditionLtpBelow  = "LTP_BELOW"
+	TimeframeTypeMin      = "minute"
+	TimeframeTypeDay      = "day"
+	TimeframeTypeTick     = "tick"
 )
 
-// Constants for validity types
-const (
-	ValidityTypeDay = "DAY"
-	ValidityTypeIOC = "IOC"
-	ValidityTypeEOS = "EOS"
-)
-
-// Constants for order statuses
-const (
-	OrderStatusNew      = "NEW"
-	OrderStatusOpen     = "OPEN"
-	OrderStatusComplete = "COMPLETE"
-	OrderStatusCancelled = "CANCELED"
-	OrderStatusRejected  = "REJECTED"
-	OrderStatusReplaced  = "REPLACED"
-)
-
-// Constants for GTT conditions
-const (
-	GttConditionLtpBelow = "LTP_BELOW"
-	GttConditionLtpAbove = "LTP_ABOVE"
-)
-
-// Constants for timeframe types
-const (
-	TimeframeTypeMin  = "minute"
-	TimeframeTypeDay  = "day"
-	TimeframeTypeTick = "tick"
-)
-
-
-func NewConnectToIntegrate(loginURL, baseURL string, timeout int, logging bool, proxies map[string]string) *ConnectToIntegrate {
-	// Set default URLs if not provided
+// NewConnectToIntegrate initializes the API client.
+func NewConnectToIntegrate(
+	loginURL string,
+	baseURL string,
+	timeout int,
+	logging bool,
+	proxies map[string]string,
+) *LocalConnect {
 	if loginURL == "" {
-		loginURL = "https://signin.definedgesecurities.com/auth/realms/debroking/dsbpkc/"
+		loginURL = "https://signin.definedgebroking.com/auth/realms/debroking/dsbpkc/"
 	}
 	if baseURL == "" {
-		baseURL = "https://integrate.definedgesecurities.com/dart/v1/"
+		baseURL = "https://api.definedgebroking.com/dart/v1/"
 	}
-
-	// Default timeout to 10 seconds if not set
 	if timeout == 0 {
 		timeout = 10
 	}
-
-	// Initialize and configure the ConnectToIntegrate instance
-	connect := &ConnectToIntegrate{
-		Logging:                logging,
-		Timeout:                time.Duration(timeout) * time.Second,
-		Proxies:                proxies,
-		ReqSess:                &http.Client{Timeout: time.Duration(timeout) * time.Second},
-		UID:                    "",
-		ActID:                  "",
-		APISessionKey:          "",
-		WSSessionKey:           "",
-		LoginURL:               loginURL,
-		BaseURL:                baseURL,
-		SessionExpiredCallback: nil, // Set a callback function if needed
-
-		// Initialize exchange, order, price, product, and subscription types
-		ExchangeTypes:       []string{"NSE", "BSE", "NFO", "CDS", "MCX"},
-		OrderTypes:          []string{"BUY", "SELL"},
-		PriceTypes:          []string{"MARKET", "LIMIT", "SL-MARKET", "SL-LIMIT"},
-		ProductTypes:        []string{"CNC", "INTRADAY", "NORMAL"},
-		SubscriptionTypes:   []string{"TICK", "ORDER", "DEPTH"},
-		GTTConditionTypes:   []string{"LTP_BELOW", "LTP_ABOVE"},
-		TimeframeTypes:      []string{"minute", "day", "tick"},
+	connect := &structs.ConnectToIntegrate{
+		Logging:           logging,
+		Timeout:           time.Duration(timeout) * time.Second,
+		Proxies:           proxies,
+		ReqSess:           &http.Client{Timeout: time.Duration(timeout) * time.Second},
+		LoginURL:          loginURL,
+		BaseURL:           baseURL,
+		Symbol:            []structs.Symbol{},
+		ExchangeTypes:     []string{"NSE", "BSE", "NFO", "CDS", "MCX"},
+		OrderTypes:        []string{"BUY", "SELL"},
+		PriceTypes:        []string{"MARKET", "LIMIT", "SL-MARKET", "SL-LIMIT"},
+		ProductTypes:      []string{"CNC", "INTRADAY", "NORMAL"},
+		SubscriptionTypes: []string{"TICK", "ORDER", "DEPTH"},
+		GTTConditionTypes: []string{"LTP_ABOVE", "LTP_BELOW"},
+		TimeframeTypes:    []string{"minute", "day", "tick"},
 	}
-  }
+	return &LocalConnect{connect}
+}
 
-
-//Login 
-func (c *ConnectToIntegrate) login(apiToken, apiSecret string, totp *string) error {
+// Login authenticates the user with the API.
+func (c *LocalConnect) Login(apiToken string, apiSecret string, totp *string) error {
 	if apiToken == "" || apiSecret == "" {
 		return errors.New("invalid api_token or api_secret")
 	}
 
-	// Get OTP token
-	r, err := c.sendRequest(c.loginURL, "login/"+apiToken, "GET", map[string]string{"api_secret": apiSecret}, nil)
+	headers := map[string]interface{}{"api_secret": apiSecret}
+	route := fmt.Sprintf("login/%s", apiToken)
+
+	// Step 1: Get OTP Token
+	response, err := c.sendRequest(c.LoginURL, route, "GET", nil, nil, nil, nil, headers)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get OTP token: %w", err)
 	}
 
-	otpToken, ok := r["otp_token"].(string)
-	if !ok {
+	fmt.Printf("Response from OTP request: %+v\n", response) // Debug print
+
+	otpToken, ok := response["otp_token"].(string)
+	if !ok || otpToken == "" {
 		return errors.New("failed to obtain otp_token")
 	}
 
-	// Get OTP/TOTP for 2FA
+	// Step 2: Get OTP
 	var otp string
 	if totp == nil {
 		fmt.Print("Enter OTP/External TOTP: ")
@@ -174,289 +134,316 @@ func (c *ConnectToIntegrate) login(apiToken, apiSecret string, totp *string) err
 	} else {
 		otp = *totp
 	}
-
-	// Compute the session key
+	// print(otp, totp)
+	// Step 3: Generate Session Key
 	ac := sha256.New()
 	ac.Write([]byte(otpToken + otp + apiSecret))
 	acHex := hex.EncodeToString(ac.Sum(nil))
 
-	// Get session keys
-	r, err = c.sendRequest(c.loginURL, "token", "POST", nil, map[string]interface{}{
+	// Step 4: Obtain Session Keys
+	response, err = c.sendRequest(c.LoginURL, "token", "POST", nil, map[string]interface{}{
 		"otp_token": otpToken,
 		"otp":       otp,
 		"ac":        acHex,
-	})
+	}, nil, nil, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to obtain session keys: %w", err)
 	}
+	// if uncomment the below code without the responce it gives an error
+	// uid, uidOk := response["uid"].(string)
+	// actid, actidOk := response["actid"].(string)
+	// apiSessionKey, apiSessionKeyOk := response["api_session_key"].(string)
+	// wsSessionKey, wsSessionKeyOk := response["susertoken"].(string)
+	// if !uidOk || !actidOk || !apiSessionKeyOk || !wsSessionKeyOk {
+	// 	return errors.New("missing or invalid keys in API response")
+	// }
 
-	// Set session keys
-	c.setSessionKeys(r["uid"].(string), r["actid"].(string), r["api_session_key"].(string))
+	// fmt.Printf("uid %s\n", uid)                       // Debug print
+	// fmt.Printf("actid %s\n", actid)                   // Debug print
+	// fmt.Printf("api_session_key %s\n", apiSessionKey) // Debug print
+	// fmt.Printf("susertoken %s\n", wsSessionKey)       // Debug print
+	// fmt.Print(response)
 
-	// Attempt to remove symbols file
-	symbolsFilename := filepath.Join(filepath.Dir(os.Args[0]), "allmaster.csv")
-	if err := os.Remove(symbolsFilename); err != nil && !os.IsNotExist(err) {
-		return err
+	// Store session keys
+	c.setSessionKeys(
+		response["uid"].(string),
+		response["actid"].(string),
+		response["api_session_key"].(string),
+		response["susertoken"].(string),
+	)
+	// Remove any existing symbols file
+	symbolsFile := filepath.Join(filepath.Dir(os.Args[0]), "allmaster.csv")
+	if err := os.Remove(symbolsFile); err != nil && !os.IsNotExist(err) {
+		logger.Println("Symbols file not found or failed to delete.")
 	}
-
-	// Call next on the symbols channel
-	select {
-	case c.symbols <- struct{}{}:
-	default:
+	// Fetch and store symbols
+	if err := Symbols(c); err != nil {
+		return fmt.Errorf("failed to fetch symbols: %w", err)
 	}
+	time.Sleep(100 * time.Millisecond)
 
 	return nil
 }
 
-
-
-// getSessionKeys retrieves stored session keys
-// Returns the session keys as strings.
-func (c *ConnectToIntegrate) getSessionKeys() (string, string, string, string) {
-	return c.uid, c.actid, c.apiSessionKey, c.wsSessionKey
+// setSessionKeys stores session keys.
+func (c *LocalConnect) setSessionKeys(uid string, actid string, apiSessionKey string, wsSessionKey string) {
+	c.UID = uid
+	c.ActID = actid
+	c.APISessionKey = apiSessionKey
+	c.WSSessionKey = wsSessionKey
 }
 
-// setSessionKeys stores session keys
-//
-// Parameters:
-//   uid: Your Definedge Securities login UCC id
-//   actid: Your Definedge Securities login account id
-//   apiSessionKey: Your Definedge Securities API session key
-//   wsSessionKey: Your Definedge Securities WebSocket session key
-func (c *ConnectToIntegrate) setSessionKeys(uid, actid, apiSessionKey, wsSessionKey string) {
-	c.uid = uid
-	c.actid = actid
-	c.apiSessionKey = apiSessionKey
-	c.wsSessionKey = wsSessionKey
-}
-
-
-// SymbolsGenerator returns a channel that yields symbols
-func SymbolsGenerator() <-chan Symbol {
-	symbolsChannel := make(chan Symbol)
-
-	go func() {
-		defer close(symbolsChannel)
-
-		// Path for the symbols file
-		symbolsFilename := filepath.Join("allmaster.csv")
-
-		// Check if the file exists
-		if _, err := os.Stat(symbolsFilename); os.IsNotExist(err) {
-			// Download the master file if not present
-			err := downloadSymbols()
-			if err != nil {
-				fmt.Println("Error downloading symbols:", err)
-				return
-			}
-		}
-
-		// Open the symbols file
-		file, err := os.Open(symbolsFilename)
-		if err != nil {
-			fmt.Println("Error opening symbols file:", err)
-			return
-		}
-		defer file.Close()
-
-		// Read the CSV file
-		reader := csv.NewReader(file)
-		records, err := reader.ReadAll()
-		if err != nil {
-			fmt.Println("Error reading CSV file:", err)
-			return
-		}
-
-		// Create and yield symbols
-		for _, record := range records {
-			if len(record) < 14 { // Ensure there are enough columns
-				continue
-			}
-			symbol := Symbol{
-				Segment:        record[0],
-				Token:          record[1],
-				Symbol:         record[2],
-				TradingSymbol:  record[3],
-				InstrumentType: record[4],
-				Expiry:         record[5],
-				TickSize:       record[6],
-				LotSize:        record[7],
-				OptionType:     record[8],
-				Strike:         fmt.Sprintf("%d", int(int(record[9])/ (int(record[11]) * 10 ^ int(record[10])))), // Convert Strike to int and format
-				ISIN:           record[12],
-				PriceMult:      record[13],
-			}
-			symbolsChannel <- symbol
-		}
-	}()
-
-	return symbolsChannel
-}
-
-// downloadSymbols downloads the symbols file
-func downloadSymbols() error {
-	url := "https://app.definedgesecurities.com/public/allmaster.zip"
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// Read the zip content
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(resp.Body)
-
-	// Extract the CSV file from the zip
-	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		return err
-	}
-
-	for _, file := range zr.File {
-		if file.Name == "allmaster.csv" {
-			outFile, err := os.Create("allmaster.csv")
-			if err != nil {
-				return err
-			}
-			defer outFile.Close()
-
-			reader, err := file.Open()
-			if err != nil {
-				return err
-			}
-			defer reader.Close()
-
-			_, err = io.Copy(outFile, reader)
-			return err
-		}
-	}
-	return fmt.Errorf("allmaster.csv not found in zip")
-}
-
-
-//function to send request
-func (s *YourStruct) sendRequest(
-	routePrefix string,
-	route string,
-	method string,
-	urlParams map[string]string,
+// sendRequest handles API requests and responses.
+func (s *LocalConnect) sendRequest(
+	routePrefix string, route string, method string,
+	urlParams map[string]interface{},
 	jsonParams map[string]interface{},
 	dataParams map[string]interface{},
-	queryParams map[string]string,
-	extraHeaders map[string]string,
+	queryParams map[string]interface{},
+	extraHeaders map[string]interface{},
 ) (map[string]interface{}, error) {
-	// Form URL
-	urlStr := routePrefix + fmt.Sprintf(route, urlParams)
-	if queryParams != nil {
-		query := url.Values{}
-		for k, v := range queryParams {
-			query.Add(k, v)
+	// Build URL
+	// fullURL := routePrefix + route
+	fullURL := routePrefix
+	if urlParams != nil {
+		routeTmpl := route
+		for k, v := range urlParams {
+			routeTmpl = strings.ReplaceAll(routeTmpl, "{"+k+"}", fmt.Sprintf("%v", v))
 		}
-		urlStr += "?" + query.Encode()
-	}
-
-	// Create a new HTTP request
-	req, err := http.NewRequest(method, urlStr, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Set headers
-	headers := make(map[string]string)
-	if extraHeaders != nil {
-		for k, v := range extraHeaders {
-			headers[k] = v
-		}
-	}
-	if s.APIKey != "" {
-		headers["Authorization"] = s.APIKey
-	}
-
-	// Add headers to request
-	for k, v := range headers {
-		req.Header.Add(k, v)
-	}
-
-	// Set request body based on method
-	if method == http.MethodPost {
-		if jsonParams != nil {
-			jsonData, err := json.Marshal(jsonParams)
-			if err != nil {
-				return nil, err
-			}
-			req.Body = ioutil.NopCloser(bytes.NewBuffer(jsonData))
-			req.Header.Set("Content-Type", "application/json")
-		} else if dataParams != nil {
-			formData, err := json.Marshal(dataParams)
-			if err != nil {
-				return nil, err
-			}
-			req.Body = ioutil.NopCloser(bytes.NewBuffer(formData))
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		}
-	}
-
-	// Logging the request
-	if s.Logging {
-		fmt.Printf("Request: %s %s %v\n", method, urlStr, headers)
-	}
-
-	// Make the HTTP request
-	client := &http.Client{
-		Timeout: s.Timeout,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// Log response
-	if s.Logging {
-		bodyBytes, _ := ioutil.ReadAll(resp.Body)
-		fmt.Printf("Response: %d %s\n", resp.StatusCode, bodyBytes)
-		resp.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes)) // Reset the body
-	}
-
-	// Check Content-Type and handle the response
-	var data map[string]interface{}
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "application/json" {
-		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-			return nil, fmt.Errorf("Couldn't parse JSON response: %s", err)
-		}
-	} else if contentType == "text/csv" {
-		csvReader := csv.NewReader(resp.Body)
-		records, err := csvReader.ReadAll()
-		if err != nil {
-			return nil, fmt.Errorf("Couldn't parse CSV response: %s", err)
-		}
-		data = map[string]interface{}{"data": records}
+		fullURL = strings.TrimRight(routePrefix, "/") + "/" + strings.TrimLeft(routeTmpl, "/")
 	} else {
-		return nil, fmt.Errorf("Unknown Content-Type (%s): %s", contentType, resp.Status)
+		fullURL = strings.TrimRight(routePrefix, "/") + "/" + strings.TrimLeft(route, "/")
+	}
+	if queryParams != nil {
+		//query := url.Values{}
+		//for k, v := range queryParams {
+		//	query.Add(k, fmt.Sprintf("%v", v))
+		//}
+		//fullURL += "?" + query.Encode()
+		u, err := url.Parse(fullURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse URL: %w", err)
+		}
+		q := u.Query()
+		for k, v := range queryParams {
+			q.Set(k, fmt.Sprintf("%v", v))
+		}
+		u.RawQuery = q.Encode()
+		fullURL = u.String()
+
 	}
 
-	// Handle response status
-	if status, exists := data["status"]; exists {
-		if status == "ERROR" {
-			if s.SessionExpiredCallback != nil && data["message"] == "Session Expired" {
-				s.SessionExpiredCallback()
-				if s.Logging {
-					fmt.Println("Session expired. Callback called")
-				}
-			} else {
-				return nil, fmt.Errorf("Error: %v", data)
+	// Prepare request body
+	var body io.Reader
+	if jsonParams != nil {
+		jsonData, err := json.Marshal(jsonParams)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal JSON params: %w", err)
+		}
+		body = bytes.NewBuffer(jsonData)
+	} else if dataParams != nil {
+		formData := url.Values{}
+		for k, v := range dataParams {
+			formData.Add(k, fmt.Sprintf("%v", v))
+		}
+		body = strings.NewReader(formData.Encode())
+	}
+
+	// Create Request
+	req, err := http.NewRequest(method, fullURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set Headers
+	for k, v := range extraHeaders {
+		req.Header.Add(k, fmt.Sprintf("%v", v))
+	}
+	if s.APISessionKey != "" {
+		// req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.APISessionKey))
+		// logger.Printf("Authorization Header: Bearer %s", s.APISessionKey)
+		req.Header.Set("Authorization", s.APISessionKey)
+	}
+	if jsonParams != nil {
+		req.Header.Set("Content-Type", "application/json")
+	} else if dataParams != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+
+	// Send Request
+	//client := &http.Client{Timeout: s.Timeout}
+	resp, err := s.ReqSess.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(resp.Body)
+
+	// Check for non-2xx status codes
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("received non-2xx response: %d %s", resp.StatusCode, resp.Status)
+	}
+	var data map[string]interface{}
+	// Parse Response
+	contentType := resp.Header.Get("content-type")
+	if strings.HasPrefix(contentType, "application/json") {
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+		}
+	} else if strings.HasPrefix(contentType, "text/csv") {
+		csvBytes, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CSV response: %w", err)
+		}
+		data = map[string]interface{}{
+			"data": string(csvBytes),
+		}
+	} else {
+		// Log and return raw body for debugging
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		fmt.Printf("Unexpected Content-Type: %s\nRaw response: %s\n", contentType, string(bodyBytes))
+		return nil, fmt.Errorf("unexpected content-type: %s", contentType)
+	}
+	return data, nil
+}
+
+func Symbols(s *LocalConnect) error {
+	symbolFileName := filepath.Join(filepath.Dir(os.Args[0]), "allmaster.csv")
+	fileInfo, err := os.Stat(symbolFileName)
+	if os.IsNotExist(err) || fileInfo.Size() == 0 {
+		//route := "https://app.definedgesecurities.com/public/allmaster.zip"
+		req, err := http.NewRequest(
+			"GET",
+			"https://app.definedgesecurities.com/public/allmaster.zip",
+			nil,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+		resp, err := s.ReqSess.Do(req)
+		if err != nil {
+			return fmt.Errorf("request failed: %w", err)
+		}
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				logger.Println("Failed to close response body:", err)
+				fmt.Println("Failed to close response body :", err)
 			}
-		} else if status == "SUCCESS" && resp.Request.URL.String() == fmt.Sprintf("%s/sliceorder", s.BaseURL) {
-			if orders, ok := data["orders"].([]interface{}); ok {
-				for _, order := range orders {
-					if orderMap, ok := order.(map[string]interface{}); ok && orderMap["status"] == "ERROR" {
-						return nil, fmt.Errorf("Error: %v", data)
-					}
+		}()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("bad status: %s", resp.Status)
+		}
+
+		zipBytes, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read zip file: %w", err)
+		}
+		zipReader, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+		if err != nil {
+			return fmt.Errorf("failed to open zip file: %w", err)
+		}
+		found := false
+		for _, f := range zipReader.File {
+			if f.Name == "allmaster.csv" {
+				rc, err := f.Open()
+				if err != nil {
+					return fmt.Errorf("failed to open csv inside zip: %w", err)
 				}
+				defer func(rc io.ReadCloser) {
+					err := rc.Close()
+					if err != nil {
+						fmt.Println("Failed to close csv file:", err)
+						logger.Println("Failed to close csv file:", err)
+					}
+				}(rc)
+
+				out, err := os.Create(symbolFileName)
+				if err != nil {
+					return fmt.Errorf("failed to create symbol file: %w", err)
+				}
+				defer func(out *os.File) {
+					err := out.Close()
+					if err != nil {
+						fmt.Println("Failed to close file:", err)
+						logger.Println("Failed to close file:", err)
+					}
+				}(out)
+
+				_, err = io.Copy(out, rc)
+				if err != nil {
+					return fmt.Errorf("failed to extract csv: %w", err)
+				}
+				found = true
+				break
 			}
 		}
-	}
+		if !found {
+			return fmt.Errorf("allmaster.csv not found in zip")
+		}
 
-	return data, nil
+		// After extraction, parse the CSV and load symbols
+		file, err := os.Open(symbolFileName)
+		if err != nil {
+			return fmt.Errorf("failed to open symbol file: %w", err)
+		}
+		defer func(file *os.File) {
+			err := file.Close()
+			if err != nil {
+				fmt.Println("Failed to close symbol file:", err)
+				logger.Println("Failed to close symbol file:", err)
+			}
+		}(file)
+
+		s.Symbol = nil // clear previous symbols
+		reader := bufio.NewReader(file)
+		for {
+			line, err := reader.ReadString('\n')
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("failed to read symbol file: %w", err)
+			}
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			cols := strings.Split(line, ",")
+			if len(cols) < 14 {
+				continue // skip incomplete lines
+			}
+			strike := ""
+			if len(cols) > 11 && len(cols) > 10 && len(cols) > 9 {
+				// strike = str(int(int(line[9]) / (int(line[11]) * 10 ** int(line[10]))))
+				strikeInt := 0
+				base, err1 := strconv.Atoi(cols[9])
+				mult, err2 := strconv.Atoi(cols[11])
+				pow, err3 := strconv.Atoi(cols[10])
+				if err1 == nil && err2 == nil && err3 == nil && mult != 0 {
+					strikeInt = base / (mult * int(math.Pow10(pow)))
+					strike = strconv.Itoa(strikeInt)
+				}
+			}
+			s.Symbol = append(s.Symbol, structs.Symbol{
+				Segment:        cols[0],
+				Token:          cols[1],
+				Symbol:         cols[2],
+				TradingSymbol:  cols[3],
+				InstrumentType: cols[4],
+				Expiry:         cols[5],
+				TickSize:       cols[6],
+				LotSize:        cols[7],
+				OptionType:     cols[8],
+				Strike:         strike,
+				ISIN:           cols[12],
+				PriceMult:      cols[13],
+			})
+		}
+		//}
+	}
+	return nil
 }
