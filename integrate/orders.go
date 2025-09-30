@@ -37,9 +37,12 @@ func (io *IntegrateOrders) PlaceOrder(
 	remarks *string,
 	trailingPrice *float64,
 	triggerPrice *float64,
-	validity string,
+	validity *string,
 ) (map[string]interface{}, error) {
-
+	if validity == nil {
+		defaultValidity := "DAY"
+		validity = &defaultValidity
+	}
 	// Validate exchange, order type, price type, and product type
 	if !io.isValidExchange(exchange) {
 		return nil, errors.New("invalid exchange type")
@@ -858,7 +861,7 @@ func (o *IntegrateOrders) Margins(orders []map[string]interface{}) (map[string]i
 	}
 	return o.c2i.sendRequest(
 		o.c2i.BaseURL,
-		"margins",
+		"margin",
 		"POST",
 		nil,
 		jsonParams,

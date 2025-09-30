@@ -1,6 +1,7 @@
 package integrate
 
 import (
+	"adapter-project/structs"
 	"errors"
 	"fmt"
 	"strconv"
@@ -8,191 +9,168 @@ import (
 	"time"
 )
 
-type IntegrateData struct {
+type IntegrateDataBeta struct {
 	c2i     *LocalConnect
 	logging bool
 }
 
-// NewIntegrateData initializes a new instance of IntegrateData
-func NewIntegrateData(c2i *LocalConnect, logging bool) *IntegrateData {
-	return &IntegrateData{
+func NewIntegrateDataBeta(c2i *LocalConnect, logging bool) *IntegrateDataBeta {
+	return &IntegrateDataBeta{
 		logging: logging,
 		c2i:     c2i,
 	}
 }
 
-// HistoricalData retrieves historical data for a security.
-// Returns data as a channel of maps, similar to Python's generator.
-func (ic *IntegrateData) HistoricalData(exchange, tradingSymbol, timeframe string, start, end time.Time) (<-chan map[string]interface{}, <-chan error, error) {
-	if !ic.isValidExchange(exchange) {
-		return nil, nil, errors.New("invalid exchange type")
+func findToken(symbols []structs.Symbol, exchange, tradingSymbol string) (string, error) {
+	exchange = strings.TrimSpace(strings.ToUpper(exchange))
+	tradingSymbol = strings.TrimSpace(strings.ToUpper(tradingSymbol))
+	for _, s := range symbols {
+		if strings.ToUpper(strings.TrimSpace(s.Segment)) == exchange &&
+			strings.ToUpper(strings.TrimSpace(s.TradingSymbol)) == tradingSymbol {
+			return s.Token, nil
+		}
 	}
-	if !ic.isValidTimeframe(timeframe) {
-		return nil, nil, errors.New("invalid timeframe")
-	}
+	return "", fmt.Errorf("token not found for %s/%s in symbols file", exchange, tradingSymbol)
+}
 
-	token, err := ic.getToken(exchange, tradingSymbol)
+// HistoricalDataBeta streams historical data as a channel, similar to Python generator
+func HistoricalDataBeta(io *IntegrateDataBeta, exchange, tradingSymbol, timeframe string, start, end time.Time) (<-chan map[string]interface{}, error) {
+	if !contains(io.c2i.ExchangeTypes, exchange) {
+		return nil, errors.New("Invalid exchange type")
+	}
+	if !contains(io.c2i.TimeframeTypes, timeframe) {
+		return nil, errors.New("Invalid timeframe")
+	}
+	token, err := findToken(io.c2i.Symbol, exchange, tradingSymbol)
 	if err != nil {
-		return nil, nil, err
+		return nil, fmt.Errorf("Token not found for %s in symbols file", tradingSymbol)
 	}
-
-	route := fmt.Sprintf("https://data.definedgesecurities.com/sds/history/%s/%s/%s/%s/%s",
-		exchange, token, timeframe, start.Format("020120061504"), end.Format("020120061504"))
-
-	dataChan := make(chan map[string]interface{})
-	errorChan := make(chan error, 1)
-
+	tokenInt, err := strconv.Atoi(token)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid token format for %s/%s: %v", exchange, tradingSymbol, err)
+	}
+	url := fmt.Sprintf("https://data.definedgesecurities.com/sds/history/%s/%d/%s/%s/%s",
+		exchange,
+		tokenInt,
+		timeframe,
+		start.Format("020120061504")[:12],
+		end.Format("020120061504")[:12],
+	)
+	resp, err := io.c2i.sendRequest(url, "", "GET", nil, nil, nil, nil, map[string]interface{}{})
+	if err != nil {
+		return nil, fmt.Errorf("Error fetching historical data: %w", err)
+	}
+	csvData, ok := resp["data"].(string)
+	if !ok || csvData == "" {
+		return nil, errors.New("Unexpected response format: no CSV data")
+	}
+	ch := make(chan map[string]interface{})
 	go func() {
-		defer close(dataChan)
-		defer close(errorChan)
-
-		response, err := ic.c2i.sendRequest(route, "GET")
-		if err != nil {
-			errorChan <- err
-			return
-		}
-
-		data, ok := response["data"].([]interface{})
-		if !ok {
-			errorChan <- errors.New("unexpected response format")
-			return
-		}
-
-		for _, line := range data {
-			dataStr, ok := line.(string)
-			if !ok {
+		defer close(ch)
+		lines := strings.Split(csvData, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
 				continue
 			}
-			fields := parseFields(dataStr)
-
-			if len(fields) == 7 {
-				dataChan <- map[string]interface{}{
-					"datetime": parseDate(fields[0]),
-					"open":     toFloat(fields[1]),
-					"high":     toFloat(fields[2]),
-					"low":      toFloat(fields[3]),
-					"close":    toFloat(fields[4]),
-					"volume":   toInt(fields[5]),
-					"oi":       toInt(fields[6]),
+			data := strings.Split(line, ",")
+			if len(data) == 7 {
+				// day/minute: DateTime, Open, High, Low, Close, Volume, OI
+				dt, err := time.Parse("020120061504", data[0])
+				if err != nil {
+					continue
 				}
-			} else if len(fields) == 4 {
-				dataChan <- map[string]interface{}{
-					"utc": fields[0],
-					"ltp": toFloat(fields[1]),
-					"ltq": toFloat(fields[2]),
-					"oi":  toFloat(fields[3]),
+				ch <- map[string]interface{}{
+					"datetime": dt,
+					"open":     parseFloat(data[1]),
+					"high":     parseFloat(data[2]),
+					"low":      parseFloat(data[3]),
+					"close":    parseFloat(data[4]),
+					"volume":   parseInt64(data[5]),
+					"oi":       parseInt64(data[6]),
+				}
+			} else if len(data) == 4 {
+				// tick: UTC, LTP, LTQ, OI
+				ch <- map[string]interface{}{
+					"utc": data[0],
+					"ltp": parseFloat(data[1]),
+					"ltq": parseFloat(data[2]),
+					"oi":  parseFloat(data[3]),
+				}
+			} else if len(data) == 6 {
+				// day/minute without OI
+				dt, err := time.Parse("020120061504", data[0])
+				if err != nil {
+					continue
+				}
+				ch <- map[string]interface{}{
+					"datetime": dt,
+					"open":     parseFloat(data[1]),
+					"high":     parseFloat(data[2]),
+					"low":      parseFloat(data[3]),
+					"close":    parseFloat(data[4]),
+					"volume":   parseInt64(data[5]),
 				}
 			}
 		}
 	}()
-	return dataChan, errorChan, nil
+	return ch, nil
 }
 
-// Quotes retrieves the quote for a security.
-func (ic *IntegrateData) Quotes(
-	exchange string,
-	tradingSymbol string) (map[string]interface{}, error) {
-	if !ic.isValidExchange(exchange) {
-		return nil, errors.New("invalid exchange type")
-	}
-
-	token, err := ic.getToken(exchange, tradingSymbol)
-	if err != nil {
-		return nil, err
-	}
-
-	route := fmt.Sprintf("quotes/%s/%s", exchange, token)
-	return ic.c2i.sendRequest(
-		ic.c2i.BaseURL,
-		route,
-		"GET",
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-	)
-}
-
-// SecurityInformation retrieves information about a security.
-func (ic *IntegrateData) SecurityInformation(
-	exchange string,
-	tradingSymbol string) (map[string]interface{}, error) {
-	if !ic.isValidExchange(exchange) {
-		return nil, errors.New("invalid exchange type")
-	}
-
-	token, err := ic.getToken(exchange, tradingSymbol)
-	if err != nil {
-		return nil, err
-	}
-
-	route := fmt.Sprintf("securityinfo/%s/%s", exchange, token)
-	return ic.c2i.sendRequest(
-		ic.c2i.BaseURL,
-		route,
-		"GET",
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-	)
-}
-
-// Utility methods (helpers)
-
-func (ic *IntegrateData) isValidExchange(exchange string) bool {
-	for _, ex := range ic.c2i.ExchangeTypes {
-		if ex == exchange {
-			return true
-		}
-	}
-	return false
-}
-
-func (ic *IntegrateData) isValidTimeframe(timeframe string) bool {
-	for _, tf := range ic.c2i.TimeframeTypes {
-		if tf == timeframe {
-			return true
-		}
-	}
-	return false
-}
-
-func (ic *IntegrateData) getToken(exchange, tradingSymbol string) (string, error) {
-	for _, symbol := range ic.c2i.Symbols {
-		if symbol["segment"] == exchange && symbol["trading_symbol"] == tradingSymbol {
-			return symbol["token"].(string), nil
-		}
-	}
-	return "", fmt.Errorf("token not found for %s in symbols file", tradingSymbol)
-}
-
-func parseDate(dateStr string) time.Time {
-	dt, err := time.Parse("020120061504", dateStr)
-	if err != nil {
-		return time.Time{}
-	}
-	return dt
-}
-
-func parseFields(data string) []string {
-	return strings.Split(data, ",")
-}
-
-func toFloat(s string) float64 {
+func parseFloat(s string) float64 {
 	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		return 0.0
+		return 0
 	}
 	return f
 }
 
-func toInt(s string) int {
-	i, err := strconv.Atoi(s)
+func parseInt64(s string) int64 {
+	i, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		return 0
 	}
 	return i
+}
+
+func parseTime(s string) time.Time {
+	t, err := time.Parse("020120061504", s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+func QuotesBeta(io *IntegrateDataBeta, exchange, tradingSymbol string) (map[string]interface{}, error) {
+	if !contains(io.c2i.ExchangeTypes, exchange) {
+		return nil, errors.New("invalid exchange type")
+	}
+	token, err := findToken(io.c2i.Symbol, exchange, tradingSymbol)
+	if err != nil {
+		return nil, err
+	}
+	route := fmt.Sprintf("quotes/%s/%s", exchange, token)
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
+		route,
+		"GET",
+		nil, nil, nil, nil, nil,
+	)
+}
+
+func SecurityInformationBeta(io *IntegrateDataBeta, exchange string, tradingSymbol string) (map[string]interface{}, error) {
+	if !contains(io.c2i.ExchangeTypes, exchange) {
+		return nil, errors.New("invalid exchange type")
+	}
+	token, err := findToken(io.c2i.Symbol, exchange, tradingSymbol)
+	if err != nil {
+		return nil, err
+	}
+	route := fmt.Sprintf("securityinfo/%s/%s", exchange, token)
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
+		route,
+		"GET",
+		nil, nil, nil, nil, nil,
+	)
 }

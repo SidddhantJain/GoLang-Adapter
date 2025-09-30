@@ -25,7 +25,8 @@ type ConnectToIntegrate struct {
 	SessionExpiredCallback func()
 	GTTConditionTypes      []string
 	TimeframeTypes         []string
-	Symbols                chan map[string]interface{}
+	//Symbols                chan map[string]interface{}
+	Symbol []Symbol
 	// SuserToken             string
 }
 
@@ -62,4 +63,17 @@ type Symbol struct {
 	Strike         string
 	ISIN           string
 	PriceMult      string
+}
+
+type HistoricalData struct {
+	DateTime time.Time
+	Open     float64
+	High     float64
+	Low      float64
+	Close    float64
+	Volume   int64
+	OI       int64
+	UTC      time.Time
+	LTP      float64
+	LTQ      float64
 }

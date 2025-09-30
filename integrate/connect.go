@@ -2,6 +2,8 @@ package integrate
 
 import (
 	"adapter-project/structs"
+	"archive/zip"
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,11 +11,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -84,7 +89,7 @@ func NewConnectToIntegrate(
 		ReqSess:           &http.Client{Timeout: time.Duration(timeout) * time.Second},
 		LoginURL:          loginURL,
 		BaseURL:           baseURL,
-		Symbols:           make(chan map[string]interface{}),
+		Symbol:            []structs.Symbol{},
 		ExchangeTypes:     []string{"NSE", "BSE", "NFO", "CDS", "MCX"},
 		OrderTypes:        []string{"BUY", "SELL"},
 		PriceTypes:        []string{"MARKET", "LIMIT", "SL-MARKET", "SL-LIMIT"},
@@ -160,20 +165,22 @@ func (c *LocalConnect) Login(apiToken string, apiSecret string, totp *string) er
 	// fmt.Print(response)
 
 	// Store session keys
-	// GIVING AN ERROR IN UID
 	c.setSessionKeys(
 		response["uid"].(string),
 		response["actid"].(string),
 		response["api_session_key"].(string),
 		response["susertoken"].(string),
 	)
-
 	// Remove any existing symbols file
 	symbolsFile := filepath.Join(filepath.Dir(os.Args[0]), "allmaster.csv")
 	if err := os.Remove(symbolsFile); err != nil && !os.IsNotExist(err) {
 		logger.Println("Symbols file not found or failed to delete.")
 	}
-	time.Sleep(100 * time.Millisecond) // its very necessary
+	// Fetch and store symbols
+	if err := Symbols(c); err != nil {
+		return fmt.Errorf("failed to fetch symbols: %w", err)
+	}
+	time.Sleep(100 * time.Millisecond)
 
 	return nil
 }
@@ -188,7 +195,7 @@ func (c *LocalConnect) setSessionKeys(uid string, actid string, apiSessionKey st
 
 // sendRequest handles API requests and responses.
 func (s *LocalConnect) sendRequest(
-	routePrefix, route, method string,
+	routePrefix string, route string, method string,
 	urlParams map[string]interface{},
 	jsonParams map[string]interface{},
 	dataParams map[string]interface{},
@@ -196,13 +203,34 @@ func (s *LocalConnect) sendRequest(
 	extraHeaders map[string]interface{},
 ) (map[string]interface{}, error) {
 	// Build URL
-	fullURL := routePrefix + route
-	if queryParams != nil {
-		query := url.Values{}
-		for k, v := range queryParams {
-			query.Add(k, fmt.Sprintf("%v", v))
+	// fullURL := routePrefix + route
+	fullURL := routePrefix
+	if urlParams != nil {
+		routeTmpl := route
+		for k, v := range urlParams {
+			routeTmpl = strings.ReplaceAll(routeTmpl, "{"+k+"}", fmt.Sprintf("%v", v))
 		}
-		fullURL += "?" + query.Encode()
+		fullURL = strings.TrimRight(routePrefix, "/") + "/" + strings.TrimLeft(routeTmpl, "/")
+	} else {
+		fullURL = strings.TrimRight(routePrefix, "/") + "/" + strings.TrimLeft(route, "/")
+	}
+	if queryParams != nil {
+		//query := url.Values{}
+		//for k, v := range queryParams {
+		//	query.Add(k, fmt.Sprintf("%v", v))
+		//}
+		//fullURL += "?" + query.Encode()
+		u, err := url.Parse(fullURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse URL: %w", err)
+		}
+		q := u.Query()
+		for k, v := range queryParams {
+			q.Set(k, fmt.Sprintf("%v", v))
+		}
+		u.RawQuery = q.Encode()
+		fullURL = u.String()
+
 	}
 
 	// Prepare request body
@@ -243,23 +271,179 @@ func (s *LocalConnect) sendRequest(
 	}
 
 	// Send Request
-	client := &http.Client{Timeout: s.Timeout}
-	resp, err := client.Do(req)
+	//client := &http.Client{Timeout: s.Timeout}
+	resp, err := s.ReqSess.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(resp.Body)
 
 	// Check for non-2xx status codes
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("received non-2xx response: %d %s", resp.StatusCode, resp.Status)
 	}
-
-	// Parse Response
 	var data map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+	// Parse Response
+	contentType := resp.Header.Get("content-type")
+	if strings.HasPrefix(contentType, "application/json") {
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+		}
+	} else if strings.HasPrefix(contentType, "text/csv") {
+		csvBytes, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CSV response: %w", err)
+		}
+		data = map[string]interface{}{
+			"data": string(csvBytes),
+		}
+	} else {
+		// Log and return raw body for debugging
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		fmt.Printf("Unexpected Content-Type: %s\nRaw response: %s\n", contentType, string(bodyBytes))
+		return nil, fmt.Errorf("unexpected content-type: %s", contentType)
 	}
-
 	return data, nil
+}
+
+func Symbols(s *LocalConnect) error {
+	symbolFileName := filepath.Join(filepath.Dir(os.Args[0]), "allmaster.csv")
+	fileInfo, err := os.Stat(symbolFileName)
+	if os.IsNotExist(err) || fileInfo.Size() == 0 {
+		//route := "https://app.definedgesecurities.com/public/allmaster.zip"
+		req, err := http.NewRequest(
+			"GET",
+			"https://app.definedgesecurities.com/public/allmaster.zip",
+			nil,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+		resp, err := s.ReqSess.Do(req)
+		if err != nil {
+			return fmt.Errorf("request failed: %w", err)
+		}
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				logger.Println("Failed to close response body:", err)
+				fmt.Println("Failed to close response body :", err)
+			}
+		}()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("bad status: %s", resp.Status)
+		}
+
+		zipBytes, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read zip file: %w", err)
+		}
+		zipReader, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+		if err != nil {
+			return fmt.Errorf("failed to open zip file: %w", err)
+		}
+		found := false
+		for _, f := range zipReader.File {
+			if f.Name == "allmaster.csv" {
+				rc, err := f.Open()
+				if err != nil {
+					return fmt.Errorf("failed to open csv inside zip: %w", err)
+				}
+				defer func(rc io.ReadCloser) {
+					err := rc.Close()
+					if err != nil {
+						fmt.Println("Failed to close csv file:", err)
+						logger.Println("Failed to close csv file:", err)
+					}
+				}(rc)
+
+				out, err := os.Create(symbolFileName)
+				if err != nil {
+					return fmt.Errorf("failed to create symbol file: %w", err)
+				}
+				defer func(out *os.File) {
+					err := out.Close()
+					if err != nil {
+						fmt.Println("Failed to close file:", err)
+						logger.Println("Failed to close file:", err)
+					}
+				}(out)
+
+				_, err = io.Copy(out, rc)
+				if err != nil {
+					return fmt.Errorf("failed to extract csv: %w", err)
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("allmaster.csv not found in zip")
+		}
+
+		// After extraction, parse the CSV and load symbols
+		file, err := os.Open(symbolFileName)
+		if err != nil {
+			return fmt.Errorf("failed to open symbol file: %w", err)
+		}
+		defer func(file *os.File) {
+			err := file.Close()
+			if err != nil {
+				fmt.Println("Failed to close symbol file:", err)
+				logger.Println("Failed to close symbol file:", err)
+			}
+		}(file)
+
+		s.Symbol = nil // clear previous symbols
+		reader := bufio.NewReader(file)
+		for {
+			line, err := reader.ReadString('\n')
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("failed to read symbol file: %w", err)
+			}
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			cols := strings.Split(line, ",")
+			if len(cols) < 14 {
+				continue // skip incomplete lines
+			}
+			strike := ""
+			if len(cols) > 11 && len(cols) > 10 && len(cols) > 9 {
+				// strike = str(int(int(line[9]) / (int(line[11]) * 10 ** int(line[10]))))
+				strikeInt := 0
+				base, err1 := strconv.Atoi(cols[9])
+				mult, err2 := strconv.Atoi(cols[11])
+				pow, err3 := strconv.Atoi(cols[10])
+				if err1 == nil && err2 == nil && err3 == nil && mult != 0 {
+					strikeInt = base / (mult * int(math.Pow10(pow)))
+					strike = strconv.Itoa(strikeInt)
+				}
+			}
+			s.Symbol = append(s.Symbol, structs.Symbol{
+				Segment:        cols[0],
+				Token:          cols[1],
+				Symbol:         cols[2],
+				TradingSymbol:  cols[3],
+				InstrumentType: cols[4],
+				Expiry:         cols[5],
+				TickSize:       cols[6],
+				LotSize:        cols[7],
+				OptionType:     cols[8],
+				Strike:         strike,
+				ISIN:           cols[12],
+				PriceMult:      cols[13],
+			})
+		}
+		//}
+	}
+	return nil
 }
