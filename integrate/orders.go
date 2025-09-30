@@ -1,9 +1,9 @@
 package integrate
 
 import (
-	"adapter-project/structs"
 	"errors"
 	"fmt"
+	"pyintegrate/structs"
 	"time"
 )
 
@@ -155,16 +155,29 @@ func (io *IntegrateOrders) isValidProductType(productType string) bool {
 	return false
 }
 
+// OrderStatus fetches the status/details of a single order by order ID.
+func (io *IntegrateOrders) OrderStatus(orderID string) (map[string]interface{}, error) {
+	if orderID == "" {
+		return nil, errors.New("orderID cannot be empty")
+	}
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
+		fmt.Sprintf("order/%s", orderID),
+		"GET",
+		nil, nil, nil, nil, nil,
+	)
+}
+
 // OrderParams represents the parameters required to modify an order.
 
 // ModifyOrder modifies an open order based on the given parameters.
-func (c *IntegrateOrders) ModifyOrder(params structs.ModifyOrderParams) (map[string]interface{}, error) {
+func (io *IntegrateOrders) ModifyOrder(params structs.ModifyOrderParams) (map[string]interface{}, error) {
 	// Check exchange type
 	// if !contains(c.c2i.ExchangeTypes, params.Exchange) {
 	// 	return nil, errors.New("invalid exchange type")
 	// }
 
-	if !c.isValidExchange(params.Exchange) {
+	if !io.isValidExchange(params.Exchange) {
 		return nil, errors.New("invalid exchange type")
 	}
 
@@ -173,7 +186,7 @@ func (c *IntegrateOrders) ModifyOrder(params structs.ModifyOrderParams) (map[str
 	// 	return nil, errors.New("invalid order type")
 	// }
 
-	if !c.isValidOrderType(params.OrderType) {
+	if !io.isValidOrderType(params.OrderType) {
 		return nil, errors.New("invalid order type")
 	}
 
@@ -182,7 +195,7 @@ func (c *IntegrateOrders) ModifyOrder(params structs.ModifyOrderParams) (map[str
 	// 	return nil, errors.New("invalid price type")
 	// }
 
-	if !c.isValidPriceType(params.PriceType) {
+	if !io.isValidPriceType(params.PriceType) {
 		return nil, errors.New("invalid price type")
 	}
 
@@ -191,7 +204,7 @@ func (c *IntegrateOrders) ModifyOrder(params structs.ModifyOrderParams) (map[str
 	// 	return nil, errors.New("invalid product type")
 	// }
 
-	if !c.isValidProductType(params.ProductType) {
+	if !io.isValidProductType(params.ProductType) {
 		return nil, errors.New("invalid product type")
 	}
 
@@ -236,7 +249,7 @@ func (c *IntegrateOrders) ModifyOrder(params structs.ModifyOrderParams) (map[str
 	addField(jsonParams, "validity", params.Validity)
 
 	// Send request
-	response, err := c.c2i.sendRequest(c.c2i.BaseURL, "modify", "POST", nil, jsonParams, nil, nil, nil)
+	response, err := io.c2i.sendRequest(io.c2i.BaseURL, "modify", "POST", nil, jsonParams, nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to modify order: %w", err)
 	}
@@ -267,7 +280,7 @@ func addOptionalField(params map[string]interface{}, key string, value interface
 }
 
 // CancelOrder cancels an order based on the order ID.
-func (c *IntegrateOrders) CancelOrder(orderID string) (map[string]interface{}, error) {
+func (io *IntegrateOrders) CancelOrder(orderID string) (map[string]interface{}, error) {
 	if orderID == "" {
 		return nil, errors.New("order ID cannot be empty")
 	}
@@ -276,7 +289,7 @@ func (c *IntegrateOrders) CancelOrder(orderID string) (map[string]interface{}, e
 	route := fmt.Sprintf("cancel/%s", orderID)
 	urlParams := map[string]interface{}{"order_id": orderID}
 	// Send GET request for cancellation
-	response, err := c.c2i.sendRequest(c.c2i.BaseURL, route, "GET", urlParams, nil, nil, nil, nil)
+	response, err := io.c2i.sendRequest(io.c2i.BaseURL, route, "GET", urlParams, nil, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +298,7 @@ func (c *IntegrateOrders) CancelOrder(orderID string) (map[string]interface{}, e
 }
 
 // SliceOrder slices an order into multiple parts and places each as a separate order.
-func (c *IntegrateOrders) SliceOrder(
+func (io *IntegrateOrders) SliceOrder(
 	exchange string,
 	orderType string,
 	price float64,
@@ -319,16 +332,16 @@ func (c *IntegrateOrders) SliceOrder(
 	// 	return nil, errors.New("invalid product type")
 	// }
 
-	if !c.isValidExchange(exchange) {
+	if !io.isValidExchange(exchange) {
 		return nil, errors.New("invalid exchange type")
 	}
-	if !c.isValidOrderType(orderType) {
+	if !io.isValidOrderType(orderType) {
 		return nil, errors.New("invalid order type")
 	}
-	if !c.isValidPriceType(priceType) {
+	if !io.isValidPriceType(priceType) {
 		return nil, errors.New("invalid price type")
 	}
-	if !c.isValidProductType(productType) {
+	if !io.isValidProductType(productType) {
 		return nil, errors.New("invalid product type")
 	}
 
@@ -392,7 +405,7 @@ func (c *IntegrateOrders) SliceOrder(
 	}
 
 	// Send POST request to slice order
-	response, err := c.c2i.sendRequest(c.c2i.BaseURL, "sliceorder", "POST", nil, jsonParams, nil, nil, nil)
+	response, err := io.c2i.sendRequest(io.c2i.BaseURL, "sliceorder", "POST", nil, jsonParams, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -424,7 +437,7 @@ func (c *IntegrateOrders) SliceOrder(
 
 // ConvertPositionProductType converts an open position's product type.
 
-func (c *IntegrateOrders) ConvertPositionProductType(
+func (io *IntegrateOrders) ConvertPositionProductType(
 	exchange string,
 	orderType string,
 	previousProduct string,
@@ -435,13 +448,13 @@ func (c *IntegrateOrders) ConvertPositionProductType(
 ) (map[string]interface{}, error) {
 
 	// Validate parameters
-	if !contains(c.c2i.ExchangeTypes, exchange) {
+	if !contains(io.c2i.ExchangeTypes, exchange) {
 		return nil, errors.New("invalid exchange type")
 	}
-	if !contains(c.c2i.OrderTypes, orderType) {
+	if !contains(io.c2i.OrderTypes, orderType) {
 		return nil, errors.New("invalid order type")
 	}
-	if !contains(c.c2i.ProductTypes, productType) || !contains(c.c2i.ProductTypes, previousProduct) {
+	if !contains(io.c2i.ProductTypes, productType) || !contains(io.c2i.ProductTypes, previousProduct) {
 		return nil, errors.New("invalid product type")
 	}
 	if quantity == 0 {
@@ -463,8 +476,8 @@ func (c *IntegrateOrders) ConvertPositionProductType(
 	}
 
 	// Send request
-	response, err := c.c2i.sendRequest(
-		c.c2i.BaseURL,
+	response, err := io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"productconversion",
 		"POST",
 		nil,
@@ -481,7 +494,7 @@ func (c *IntegrateOrders) ConvertPositionProductType(
 }
 
 // PlaceGTTOrder places a GTT order.
-func (c *IntegrateOrders) PlaceGTTOrder(
+func (io *IntegrateOrders) PlaceGTTOrder(
 	exchange string,
 	orderType string,
 	price float64,
@@ -501,13 +514,13 @@ func (c *IntegrateOrders) PlaceGTTOrder(
 	if quantity == 0 {
 		return nil, errors.New("quantity cannot be 0")
 	}
-	if !contains(c.c2i.GTTConditionTypes, condition) {
+	if !contains(io.c2i.GTTConditionTypes, condition) {
 		return nil, errors.New("invalid GTT condition")
 	}
-	if !c.isValidExchange(exchange) {
+	if !io.isValidExchange(exchange) {
 		return nil, errors.New("invalid exchange type")
 	}
-	if !c.isValidOrderType(orderType) {
+	if !io.isValidOrderType(orderType) {
 		return nil, errors.New("invalid order type")
 	}
 
@@ -523,8 +536,8 @@ func (c *IntegrateOrders) PlaceGTTOrder(
 	}
 
 	// Send request
-	response, err := c.c2i.sendRequest(
-		c.c2i.BaseURL,
+	response, err := io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"gttplaceorder",
 		"POST",
 		nil,
@@ -544,7 +557,7 @@ func (c *IntegrateOrders) PlaceGTTOrder(
 // 	c2i *types.C2I
 // }
 
-func (o *IntegrateOrders) ModifyGTTOrder(
+func (io *IntegrateOrders) ModifyGTTOrder(
 	exchange string,
 	alertID string,
 	orderType string,
@@ -555,10 +568,10 @@ func (o *IntegrateOrders) ModifyGTTOrder(
 	quantity int,
 ) (map[string]interface{}, error) {
 	// Validate input parameters
-	if !o.isValidExchange(exchange) {
+	if !io.isValidExchange(exchange) {
 		return nil, errors.New("invalid exchange type")
 	}
-	if !o.isValidOrderType(orderType) {
+	if !io.isValidOrderType(orderType) {
 		return nil, errors.New("invalid order type")
 	}
 	if quantity == 0 {
@@ -577,8 +590,8 @@ func (o *IntegrateOrders) ModifyGTTOrder(
 		"condition":     condition,
 	}
 
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"gttmodify",
 		"POST",
 		nil,
@@ -589,7 +602,7 @@ func (o *IntegrateOrders) ModifyGTTOrder(
 	)
 }
 
-func (o *IntegrateOrders) CancelGTTOrder(alertID string) (map[string]interface{}, error) {
+func (io *IntegrateOrders) CancelGTTOrder(alertID string) (map[string]interface{}, error) {
 	// Prepare URL parameters
 	urlParams := map[string]interface{}{
 		"alert_id": alertID,
@@ -597,8 +610,8 @@ func (o *IntegrateOrders) CancelGTTOrder(alertID string) (map[string]interface{}
 
 	gttCancel := fmt.Sprintf("gttcancel/%s", alertID)
 
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		gttCancel,
 		"GET",
 		urlParams,
@@ -609,7 +622,7 @@ func (o *IntegrateOrders) CancelGTTOrder(alertID string) (map[string]interface{}
 	)
 }
 
-func (o *IntegrateOrders) PlaceOCOOrder(
+func (io *IntegrateOrders) PlaceOCOOrder(
 	exchange string,
 	orderType string,
 	tradingsymbol string,
@@ -620,10 +633,10 @@ func (o *IntegrateOrders) PlaceOCOOrder(
 	remarks *string,
 ) (map[string]interface{}, error) {
 	// Validate input parameters
-	if !o.isValidExchange(exchange) {
+	if !io.isValidExchange(exchange) {
 		return nil, errors.New("invalid exchange type")
 	}
-	if !o.isValidOrderType(orderType) {
+	if !io.isValidOrderType(orderType) {
 		return nil, errors.New("invalid order type")
 	}
 	if stoplossQuantity == 0 {
@@ -647,8 +660,8 @@ func (o *IntegrateOrders) PlaceOCOOrder(
 		jsonParams["remarks"] = *remarks
 	}
 
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"ocoplaceorder",
 		"POST",
 		nil,
@@ -659,7 +672,7 @@ func (o *IntegrateOrders) PlaceOCOOrder(
 	)
 }
 
-func (o *IntegrateOrders) ModifyOCOOrder(
+func (io *IntegrateOrders) ModifyOCOOrder(
 	exchange string,
 	alertID string,
 	orderType string,
@@ -671,10 +684,10 @@ func (o *IntegrateOrders) ModifyOCOOrder(
 	remarks *string,
 ) (map[string]interface{}, error) {
 	// Validate input parameters
-	if !o.isValidExchange(exchange) {
+	if !io.isValidExchange(exchange) {
 		return nil, errors.New("invalid exchange type")
 	}
-	if !o.isValidOrderType(orderType) {
+	if !io.isValidOrderType(orderType) {
 		return nil, errors.New("invalid order type")
 	}
 	if stoplossQuantity == 0 {
@@ -699,8 +712,8 @@ func (o *IntegrateOrders) ModifyOCOOrder(
 		jsonParams["remarks"] = *remarks
 	}
 
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"ocomodify",
 		"POST",
 		nil,
@@ -711,15 +724,15 @@ func (o *IntegrateOrders) ModifyOCOOrder(
 	)
 }
 
-func (o *IntegrateOrders) CancelOCOOrder(alertID string) (map[string]interface{}, error) {
+func (io *IntegrateOrders) CancelOCOOrder(alertID string) (map[string]interface{}, error) {
 	// Prepare URL parameters
 	urlParams := map[string]interface{}{
 		"alert_id": alertID,
 	}
 	ocoCancel := fmt.Sprintf("ococancel/%s", alertID)
 
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		ocoCancel,
 		"GET",
 		urlParams,
@@ -730,15 +743,15 @@ func (o *IntegrateOrders) CancelOCOOrder(alertID string) (map[string]interface{}
 	)
 }
 
-func (o *IntegrateOrders) Orders() (map[string]interface{}, error) {
-	logger.Printf("Making request to URL: %s", o.c2i.BaseURL+"orders")
+func (io *IntegrateOrders) Orders() (map[string]interface{}, error) {
+	logger.Printf("Making request to URL: %s", io.c2i.BaseURL+"orders")
 	tme := time.Now()
 	// Retrieve list of orders
 	var orders map[string]interface{}
 	var err error
 	for i := 0; i < 3; i++ {
-		orders, err = o.c2i.sendRequest(
-			o.c2i.BaseURL,
+		orders, err = io.c2i.sendRequest(
+			io.c2i.BaseURL,
 			"orders",
 			"GET",
 			nil,
@@ -766,14 +779,14 @@ func (o *IntegrateOrders) Orders() (map[string]interface{}, error) {
 	// )
 }
 
-func (o *IntegrateOrders) Order(orderID string) (map[string]interface{}, error) {
+func (io *IntegrateOrders) Order(orderID string) (map[string]interface{}, error) {
 	// Retrieve status of a specific order
 	urlParams := map[string]interface{}{
 		"order_id": orderID,
 	}
 	orderRoute := fmt.Sprintf("order/%s", orderID)
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		orderRoute,
 		"GET",
 		urlParams,
@@ -784,10 +797,10 @@ func (o *IntegrateOrders) Order(orderID string) (map[string]interface{}, error) 
 	)
 }
 
-func (o *IntegrateOrders) GTTOrders() (map[string]interface{}, error) {
+func (io *IntegrateOrders) GTTOrders() (map[string]interface{}, error) {
 	// Retrieve list of GTT orders
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"gttorders",
 		"GET",
 		nil,
@@ -798,10 +811,10 @@ func (o *IntegrateOrders) GTTOrders() (map[string]interface{}, error) {
 	)
 }
 
-func (o *IntegrateOrders) Trades() (map[string]interface{}, error) {
+func (io *IntegrateOrders) Trades() (map[string]interface{}, error) {
 	// Retrieve list of trades
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"trades",
 		"GET",
 		nil,
@@ -812,10 +825,10 @@ func (o *IntegrateOrders) Trades() (map[string]interface{}, error) {
 	)
 }
 
-func (o *IntegrateOrders) Positions() (map[string]interface{}, error) {
+func (io *IntegrateOrders) Positions() (map[string]interface{}, error) {
 	// Retrieve list of positions
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"positions",
 		"GET",
 		nil,
@@ -826,10 +839,10 @@ func (o *IntegrateOrders) Positions() (map[string]interface{}, error) {
 	)
 }
 
-func (o *IntegrateOrders) Holdings() (map[string]interface{}, error) {
+func (io *IntegrateOrders) Holdings() (map[string]interface{}, error) {
 	// Retrieve list of holdings
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"holdings",
 		"GET",
 		nil,
@@ -840,10 +853,10 @@ func (o *IntegrateOrders) Holdings() (map[string]interface{}, error) {
 	)
 }
 
-func (o *IntegrateOrders) Limits() (map[string]interface{}, error) {
+func (io *IntegrateOrders) Limits() (map[string]interface{}, error) {
 	// Retrieve account balance and cash margin details for all segments
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"limits",
 		"GET",
 		nil,
@@ -854,13 +867,13 @@ func (o *IntegrateOrders) Limits() (map[string]interface{}, error) {
 	)
 }
 
-func (o *IntegrateOrders) Margins(orders []map[string]interface{}) (map[string]interface{}, error) {
+func (io *IntegrateOrders) Margins(orders []map[string]interface{}) (map[string]interface{}, error) {
 	// Get margin for a list of orders
 	jsonParams := map[string]interface{}{
 		"basketlists": orders,
 	}
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"margin",
 		"POST",
 		nil,
@@ -871,13 +884,13 @@ func (o *IntegrateOrders) Margins(orders []map[string]interface{}) (map[string]i
 	)
 }
 
-func (o *IntegrateOrders) SpanCalculator(positions []map[string]interface{}) (map[string]interface{}, error) {
+func (io *IntegrateOrders) SpanCalculator(positions []map[string]interface{}) (map[string]interface{}, error) {
 	// Get span information for a list of positions
 	jsonParams := map[string]interface{}{
 		"positions": positions,
 	}
-	return o.c2i.sendRequest(
-		o.c2i.BaseURL,
+	return io.c2i.sendRequest(
+		io.c2i.BaseURL,
 		"spancalculator",
 		"POST",
 		nil,

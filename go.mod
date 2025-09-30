@@ -1,4 +1,4 @@
-module adapter-project
+module pyintegrate
 
 go 1.23.1
 

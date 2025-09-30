@@ -1,7 +1,6 @@
 package integrate
 
 import (
-	"adapter-project/structs"
 	"archive/zip"
 	"bufio"
 	"bytes"
@@ -18,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"pyintegrate/structs"
 	"strconv"
 	"strings"
 	"time"

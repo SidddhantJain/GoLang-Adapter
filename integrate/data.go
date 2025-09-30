@@ -1,9 +1,9 @@
 package integrate
 
 import (
-	"adapter-project/structs"
 	"errors"
 	"fmt"
+	"pyintegrate/structs"
 	"strconv"
 	"strings"
 	"time"
